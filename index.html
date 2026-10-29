@@ -39,6 +39,7 @@ canvas{display:block;width:100vw;height:100vh}
 .sw button{padding:8px 12px;border:3px solid transparent;border-radius:10px;cursor:pointer;color:#fff;font-weight:700}
 .sw button.on{border-color:#fff}
 .sec{font-weight:700;margin-top:6px;color:#dfe3ff}
+.bts{display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end}.bts button{font-size:12px;padding:8px 9px}
 body.low *{backdrop-filter:none!important;transition:none!important}
 .in{width:100%;padding:12px;margin:6px 0;border-radius:10px;border:1px solid hsl(var(--h) 60% 50% / .4);background:rgba(0,0,0,.3);color:#fff;font-size:16px}
 #money,#wbox{position:fixed;left:10px;padding:6px 12px;border-radius:10px;background:rgba(8,10,26,.6);border:1px solid hsl(var(--h) 60% 50% / .25);font-size:13px;pointer-events:none;color:hsl(var(--h) 100% 85%)}
@@ -189,11 +190,16 @@ function noiseSrc(ac){
   return NB;
 }
 // every sound is a small patch: an oscillator or noise, a filter that sweeps, and a fast envelope
-let voices=0;
+let voices=0, budget=22, budgetT=performance.now();
 function play(fn){
-  if(!SET.sound||voices>=10)return;
+  if(!SET.sound)return;
+  const now=performance.now();
+  if(now-budgetT>=1000){budget=22;budgetT=now;}
+  if(!sfxPrio&&budget<=0)return;
+  if(voices>=(sfxPrio?16:10))return;
   const x=ac();if(!x)return;
-  voices++;setTimeout(()=>voices--,450);
+  if(x.state==='suspended')x.resume();
+  budget--;voices++;setTimeout(()=>voices--,450);
   try{fn(x,x.currentTime);}catch(e){}
 }
 function sweep(x,t,f0,f1,d,type,v,filt=0,delay=0){
@@ -264,12 +270,13 @@ const SFX={
 // minimum gap between repeats of the same sound, so rapid hits don't pile up
 const SFX_GAP={shoot:90,turret:140,hit:70,kill:70,hurt:250,quake:500,pulse:300,buy:150,wave:400};
 const sfxLast={};
+const PRIO=new Set(['hurt','wave','buy','quake','kill']);let sfxPrio=false;
 for(const k in SFX){
   const f=SFX[k];
   SFX[k]=(...args)=>{
     const now=performance.now();
     if(now-(sfxLast[k]||0)<(SFX_GAP[k]||100))return;
-    sfxLast[k]=now;f(...args);
+    sfxLast[k]=now;sfxPrio=PRIO.has(k);try{f(...args);}finally{sfxPrio=false;}
   };
 }
 
@@ -713,6 +720,15 @@ function hud(){
 
 // ---- menus ----
 const TABS=[['tower','Tower'],['drones','Drones'],['turrets','Turrets'],['quake','Quake'],['abilities','Abilities'],['worlds','Worlds'],['board','Board'],['settings','Settings']];
+function sumCost(u,n){let t=0,lv=S.lv[u.id];for(let i=0;i<n&&lv+i<u.m;i++)t+=cost(u.b,lv+i);return t;}
+function btnsFor(u,c,maxed){
+  if(maxed)return '<button disabled>MAX</button>';
+  const dis=S.points<c?'disabled':'';
+  if(u.m===1)return `<button data-buy="${u.id}" data-n="1" ${dis}>${fmt(c)} pts</button>`;
+  return `<button data-buy="${u.id}" data-n="1" ${dis}>${fmt(c)}</button>`+
+    `<button data-buy="${u.id}" data-n="10" ${dis}>x10 ${fmt(sumCost(u,10))}</button>`+
+    `<button data-buy="${u.id}" data-n="999" ${dis}>MAX ${fmt(sumCost(u,999))}</button>`;
+}
 function renderMenu(){
   $('tabs').innerHTML=TABS.map(([k,n])=>`<button data-t="${k}" class="${S.tab===k?'on':''}">${n}</button>`).join('');
   $('tabs').querySelectorAll('button').forEach(b=>b.onclick=()=>{S.tab=b.dataset.t;if(S.tab==='board')loadBoard().then(renderMenu);renderMenu();});
@@ -738,11 +754,11 @@ function renderMenu(){
     h=UPG[S.tab].map(u=>{
       const lv=S.lv[u.id],maxed=lv>=u.m,c=cost(u.b,lv);
       return `<div class="up"><div><b>${u.n}</b> <span style="color:#9ba3c8">Lv ${lv}/${u.m}</span><small>${u.d}</small></div>`+
-        `<button data-id="${u.id}" ${maxed||S.points<c?'disabled':''}>${maxed?'MAX':fmt(c)+' pts'}</button></div>`;
+        `<div class="bts">${btnsFor(u,c,maxed)}</div></div>`;
     }).join('');
   }
   $('list').innerHTML=h;
-  $('list').querySelectorAll('[data-id]').forEach(b=>b.onclick=()=>buy(b.dataset.id));
+  $('list').querySelectorAll('[data-buy]').forEach(b=>b.onclick=()=>buyN(b.dataset.id,+b.dataset.n));
   $('list').querySelectorAll('[data-world]').forEach(b=>b.onclick=()=>buyWorld(+b.dataset.world));
   $('list').querySelectorAll('[data-c]').forEach(b=>b.onclick=()=>{SET.color=+b.dataset.c;applyTheme();save();renderMenu();});
   $('list').querySelectorAll('[data-tog]').forEach(b=>b.onclick=()=>{const k=b.dataset.tog;SET[k]=!SET[k];if(SET[k]&&k==='ultra')SET.low=false;if(SET[k]&&k==='low')SET.ultra=false;save();document.body.classList.toggle('low',!!SET.low);renderMenu();});
@@ -760,6 +776,18 @@ function buy(id){
   S.points-=c;S.lv[id]++;SFX.buy();saveSoon();
   if(id==='hp'){S.maxHp+=25;S.hp=Math.min(S.maxHp,S.hp+25);}
   if(id==='tur'){S.sel=S.sel>=S.lv.tur?-1:S.sel;}
+  renderMenu();
+}
+function buyN(id,n){
+  const u=ALLUP.find(x=>x.id===id);let bought=0;
+  while(bought<n&&S.lv[id]<u.m){
+    const c=cost(u.b,S.lv[id]);
+    if(S.points<c)break;
+    S.points-=c;S.lv[id]++;bought++;
+    if(id==='hp'){S.maxHp+=25;S.hp=Math.min(S.maxHp,S.hp+25);}
+  }
+  if(id==='tur'&&S.sel>=S.lv.tur)S.sel=-1;
+  if(bought){SFX.buy();saveSoon();}
   renderMenu();
 }
 function buyWorld(i){
