@@ -47,6 +47,7 @@ body.low *{backdrop-filter:none!important;transition:none!important}
 #wbox{bottom:12px}
 #money b,#wbox b{font-size:15px;color:#fff}
 #hpT{font-size:12px;opacity:.85;margin-top:4px}
+#spd{pointer-events:auto;width:100%;margin-bottom:6px;padding:6px;border:0;border-radius:8px;background:hsl(var(--h) 60% 40%);color:#fff;font-weight:700;font-size:13px;cursor:pointer}
 #abil{position:fixed;bottom:110px;right:12px;display:flex;flex-direction:column;align-items:flex-end;gap:8px}
 .ab{padding:10px 14px;border-radius:10px;border:1px solid hsl(var(--h) 60% 60% / .5);background:rgba(8,10,26,.75);color:#fff;font-size:13px;font-weight:700;cursor:pointer;min-width:100px;touch-action:manipulation}
 .ab:disabled{opacity:.45;cursor:default}
@@ -55,7 +56,7 @@ body.low *{backdrop-filter:none!important;transition:none!important}
 </head>
 <body>
 <canvas id="c"></canvas>
-<div id="hud"><div class="bar"><i id="hpb"></i></div><div id="hpT">HP 150/150</div><div id="sel"></div></div>
+<div id="hud"><button id="spd">Speed x1</button><div class="bar"><i id="hpb"></i></div><div id="hpT">HP 150/150</div><div id="sel"></div></div>
 <div id="money">💰 <b id="ptT">0</b></div>
 <div id="abil"></div>
 <div id="wbox">🌊 Wave <b id="wvT">1</b> · World <b id="wlN">1</b></div>
@@ -158,7 +159,10 @@ const UPG={
     {id:'nova',n:'Nova Blast [R]',d:'Deals 40 damage to every shape on screen, 40s cooldown',b:3000,m:1},
     {id:'beam',n:'Spin Beam [T]',d:'A beam spins 3 times over 3 seconds, dealing extreme damage to everything it touches. 35s cooldown',b:4000,m:1},
     {id:'overcharge',n:'Overcharge [F]',d:'Core fires twice as fast for 6 seconds. 30s cooldown',b:2500,m:1},
-    {id:'mend',n:'Mend [G]',d:'Restore 50% of max HP. 60s cooldown',b:2000,m:1}
+    {id:'mend',n:'Mend [G]',d:'Restore 50% of max HP. 60s cooldown',b:2000,m:1},
+    {id:'speed2',n:'Time x2',d:'Unlocks x2 game speed (top-left button)',b:20000,m:1},
+    {id:'speed4',n:'Time x4',d:'Unlocks x4 game speed (top-left button)',b:150000,m:1},
+    {id:'speed8',n:'Time x8',d:'Unlocks x8 game speed (top-left button)',b:1000000,m:1}
   ]
 };
 const ALLUP=[...UPG.tower,...UPG.drones,...UPG.turrets,...UPG.quake,...UPG.abilities];
@@ -497,7 +501,7 @@ function update(dt){
 
   // bullets
   for(const b of S.bullets){
-    b.x+=b.vx*dt;b.y+=b.vy*dt;b.life-=dt;
+    b.x+=b.vx*dt;b.y+=b.vy*dt;b.life-=dt;b.age=(b.age||0)+dt;
     if(b.life<=0||b.x<-60||b.y<-60||b.x>cw+60||b.y>ch+60){b.dead=true;continue;}
     for(const s of S.shapes){
       if(s.dead||b.hit.includes(s))continue;
@@ -639,8 +643,8 @@ function draw(){
 
   // bullets
   for(const b of S.bullets){
-    ctx.strokeStyle=b.c;ctx.lineWidth=3;ctx.globalAlpha=0.55;
-    ctx.beginPath();ctx.moveTo(b.x-b.vx*(SET.ultra?0.1:0.045),b.y-b.vy*(SET.ultra?0.1:0.045));ctx.lineTo(b.x,b.y);ctx.stroke();
+    ctx.strokeStyle=b.c;ctx.lineWidth=3;ctx.globalAlpha=SET.low?0:0.55;
+    ctx.beginPath();ctx.moveTo(b.x-b.vx*Math.min(SET.ultra?0.1:0.045,b.age||0),b.y-b.vy*Math.min(SET.ultra?0.1:0.045,b.age||0));ctx.lineTo(b.x,b.y);ctx.stroke();
     ctx.globalAlpha=1;ctx.fillStyle='#fff';
     ctx.beginPath();ctx.arc(b.x,b.y,2.8,0,TAU);ctx.fill();
   }
@@ -735,6 +739,7 @@ function updAbil(){
 }
 function hud(){
   if(!S.started)return;
+  $('spd').textContent='Speed x'+Math.min(SPEED,maxSpeed());
   const sig=ABK.map(a=>S.lv[a[3]]||0).join();
   if(sig!==S.absig){S.absig=sig;buildAbil();}
   updAbil();
@@ -985,12 +990,17 @@ addEventListener('keydown',e=>{
 });
 addEventListener('keyup',e=>{if(e.key===' ')S.hold=false;});
 
+// ---- time speed: x1, x2, x4, x8 ----
+let SPEED=1;
+function maxSpeed(){return S.lv&&S.lv.speed8?8:S.lv&&S.lv.speed4?4:S.lv&&S.lv.speed2?2:1;}
+$('spd').onpointerdown=e=>{e.stopPropagation();SPEED=SPEED>=maxSpeed()?1:SPEED*2;$('spd').textContent='Speed x'+Math.min(SPEED,maxSpeed());};
+
 // ---- loop ----
 let last=performance.now();
 function frame(now){
   const dt=Math.min(0.033,(now-last)/1000);last=now;
   try{
-    if(S.started&&!S.menu&&!S.over)update(dt);
+    for(let i=0;i<Math.min(SPEED,maxSpeed())&&S.started&&!S.menu&&!S.over;i++)update(dt);
     draw();
   }catch(err){console.error(err);}
   try{hud();}catch(err){}
