@@ -116,8 +116,8 @@ const SHAPES=[
   {n:8,star:1,name:'Octagram',w:4},{n:12,star:1,name:'Dodecagram',w:5},{n:20,name:'Icosagon',w:5},{n:32,name:'Prism Sun',w:5}
 ].map((s,k)=>({...s,k,minW:s.w,hp:2**k,pts:2**k,r:Math.min(40,12+k*2.5),spd:Math.max(18,85-k*7),dmg:Math.min(60,1+k*2)}));
 const WORLDS=[
-  {name:'Dawn',mult:1,cost:0},{name:'Ember',mult:2,cost:1500},{name:'Tide',mult:4,cost:25000},
-  {name:'Void',mult:7,cost:250000},{name:'Prism',mult:12,cost:3000000}
+  {name:'Dawn',mult:1,cost:0},{name:'Ember',mult:2,cost:2000},{name:'Tide',mult:4,cost:40000},
+  {name:'Void',mult:7,cost:800000},{name:'Prism',mult:12,cost:16000000}
 ];
 const UPG={
   tower:[
@@ -266,7 +266,9 @@ function newState(){
     ang:-Math.PI/2,flash:0,muzzle:0,shake:0,shieldT:0,warpT:0,cd:{shield:0,warp:0,nova:0,beam:0,overcharge:0,mend:0},beamT:0,beamA:0,ovT:0,recoil:0,trec:[],tv:[],rings:[],mode:S.mode||'normal',normalSnap:S.normalSnap||null,lv};
 }
 let ptr=null;
-const pm=()=>WORLDS[S.wu-1].mult*(1+0.1*S.lv.greed)*(1+0.5*R.rb)*(S.mode==='hard'?3*(1+0.75*(R.hrb||0)):1);
+const wcost=w=>Math.round(w.cost*Math.pow(1.5,R.rb||0));
+const wmult=w=>w.mult*Math.pow(1.75,R.rb||0);
+const pm=()=>wmult(WORLDS[S.wu-1])*(1+0.1*S.lv.greed)*(1+0.5*R.rb)*(S.mode==='hard'?3*(1+0.75*(R.hrb||0)):1);
 
 $('guide').innerHTML=SHAPES.map(s=>`<span>${s.name}</span>`).join('')+'';
 $('guide').innerHTML=SHAPES.map(s=>`<span style="color:${shapeCol(s.k)}">${s.name}</span>`).join('');
@@ -702,9 +704,9 @@ function renderMenu(){
     h=boardHTML();
   }else if(S.tab==='worlds'){
     h=WORLDS.map((w,i)=>{
-      const owned=i<S.wu,next=i===S.wu,c=w.cost;
+      const owned=i<S.wu,next=i===S.wu,c=wcost(w);
       const btn=owned?'<span style="color:#8f8">Owned</span>':next?`<button data-world="${i}" ${S.points<c?'disabled':''}>${fmt(c)} pts</button>`:'<span style="color:#667">Locked</span>';
-      return `<div class="up"><div><b>${w.name}</b> <span style="color:#9ba3c8">×${w.mult} points</span><small>Unlocks shapes and enemy pace from this world</small></div>${btn}</div>`;
+      return `<div class="up"><div><b>${w.name}</b> <span style="color:#9ba3c8">×${wmult(w).toFixed(2)} points</span><small>Unlocks shapes and enemy pace from this world</small></div>${btn}</div>`;
     }).join('');
   }else if(S.tab==='settings'){
     h=`<div class="sec">Theme (recolors everything)</div><div class="sw">${THEMES.map((t,i)=>`<button data-c="${i}" class="${i===SET.color?'on':''}" style="background:hsl(${t.h}, 80%, 50%)">${t.n}</button>`).join('')}</div>`+
@@ -744,8 +746,8 @@ function buy(id){
 }
 function buyWorld(i){
   const w=WORLDS[i];
-  if(i!==S.wu||S.points<w.cost)return;
-  S.points-=w.cost;S.wu++;SFX.wave();saveSoon();
+  if(i!==S.wu||S.points<wcost(w))return;
+  S.points-=wcost(w);S.wu++;SFX.wave();saveSoon();
   banner(`WORLD ${S.wu}: ${WORLDS[S.wu-1].name.toUpperCase()}`);
   renderMenu();
 }
