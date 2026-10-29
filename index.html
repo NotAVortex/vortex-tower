@@ -291,7 +291,7 @@ function newState(){
   return {started:true,menu:false,over:false,tab:S.tab||'tower',t:0,hp:150,maxHp:150,points:0,kills:0,
     wave:1,wk:0,wu:1,shapes:[],bullets:[],parts:[],texts:[],gp:[],qs:[],
     spawnT:0.5,gpT:0,qT:2,fireT:0,botT:[],tcd:[],ta:[],sel:-1,hold:false,
-    ang:-Math.PI/2,flash:0,muzzle:0,shake:0,shieldT:0,warpT:0,cd:{shield:0,warp:0,nova:0,beam:0,overcharge:0,mend:0},beamT:0,beamA:0,ovT:0,recoil:0,trec:[],tv:[],rings:[],mode:S.mode||'normal',normalSnap:S.normalSnap||null,lv};
+    ang:-Math.PI/2,flash:0,muzzle:0,shake:0,shieldT:0,warpT:0,cd:{shield:0,warp:0,nova:0,beam:0,overcharge:0,mend:0},beamT:0,beamA:0,ovT:0,coreOff:false,recoil:0,trec:[],tv:[],rings:[],mode:S.mode||'normal',normalSnap:S.normalSnap||null,lv};
 }
 let ptr=null;
 const wcost=w=>Math.round(w.cost*Math.pow(1.5,R.rb||0));
@@ -350,8 +350,17 @@ function abilText(){
   if(S.lv.nova)parts.push('R '+f(S.cd.nova));
   return parts.length?'  '+parts.join(' · '):'';
 }
+function spawnBoss(){
+  const n=S.wave/15;
+  const hp=16384*Math.pow(2,n)*(S.mode==='hard'?4:1);
+  const T={n:24,name:'Boss',k:18,hp,pts:Math.round(hp/4),r:64,spd:16,dmg:40+10*n,minW:1};
+  const a=Math.random()*TAU,R2=Math.hypot(cw,ch)/2+80;
+  S.shapes.push({t:T,x:cx+Math.cos(a)*R2,y:cy+Math.sin(a)*R2,hp,max:hp,r:T.r,rot:0,fl:0,dead:false,age:0,arm:0.5,boss:true});
+  banner('BOSS INCOMING');SFX.quake();addShake(6);
+}
 function killShape(s){
   s.dead=true;
+  if(s.boss){banner('BOSS DEFEATED');addShake(10);}
   const gain=Math.round(s.t.pts*pm());
   S.points+=gain;S.kills++;S.wk++;
   S.texts.push({x:s.x,y:s.y,t:'+'+fmt(gain),life:0.9,col:'#ffe066'});
@@ -379,12 +388,23 @@ function update(dt){
   for(const g of S.gp)g.r+=160*dt;
   S.gp=S.gp.filter(g=>g.r<diag);
 
+  if(S.wave%15===0&&S.bossFor!==S.wave){S.bossFor=S.wave;spawnBoss();}
   S.spawnT-=dt;
   if(S.spawnT<=0){spawn();S.spawnT=Math.max(0.25,1.8-S.wave*0.04)/(1+0.4*(S.wu-1))*(0.7+Math.random()*0.6);}
 
   const sp=(0.75+(S.wave-1)*0.012)*(1+(S.wu-1)*0.06)*(S.warpT>0?0.35:1);
   for(const s of S.shapes){
     if(s.dead)continue;
+    if(s.boss){
+      const bx=cx-s.x,by=cy-s.y,bd=Math.hypot(bx,by)||1;
+      if(bd>s.r+70){s.x+=bx/bd*s.t.spd*sp*dt;s.y+=by/bd*s.t.spd*sp*dt;}
+      else if(s.hitT===undefined||S.t-s.hitT>1.5){
+        s.hitT=S.t;S.hp-=s.t.dmg*(S.shieldT>0?0:1);S.flash=0.25;addShake(12);SFX.hurt();
+        S.texts.push({x:cx,y:cy-40,t:'-'+s.t.dmg,life:0.8,col:'#ff6666'});
+      }
+      s.rot+=dt*0.2;s.fl=Math.max(0,s.fl-dt);
+      continue;
+    }
     const dx=cx-s.x,dy=cy-s.y,d=Math.hypot(dx,dy)||1;
     if(d<26+s.r){
       S.hp-=s.t.dmg*(S.shieldT>0?0:1);S.flash=0.25;addShake(8);SFX.hurt();
@@ -402,7 +422,7 @@ function update(dt){
   if(target===null){const n=nearest(cx,cy,1e9);if(n)target=Math.atan2(n.y-cy,n.x-cx);}
   if(target!==null)S.ang+=wrap(target-S.ang)*Math.min(1,dt*22);
   S.fireT-=dt;
-  if(S.fireT<=0&&S.shapes.length){
+  if(S.fireT<=0&&S.shapes.length&&!S.coreOff){
     S.fireT=0.42*Math.pow(0.88,L.rate)*(S.ovT>0?0.5:1);S.muzzle=1;S.recoil=1;SFX.shoot();
     const n=1+L.multi,spd=620*(1+0.15*L.speed);
     for(let i=0;i<n;i++){
@@ -675,7 +695,7 @@ function draw(){
     ctx.restore();
   }
   // particles
-  for(const p of S.parts){ctx.globalAlpha=Math.max(0,Math.min(1,p.life*2));ctx.fillStyle=p.col;ctx.fillRect(p.x-2,p.y-2,4,4);}
+  for(const p of (SET.low?[]:S.parts)){ctx.globalAlpha=Math.max(0,Math.min(1,p.life*2));ctx.fillStyle=p.col;ctx.fillRect(p.x-2,p.y-2,4,4);}
   ctx.globalAlpha=1;
 
   // floating text
@@ -698,11 +718,16 @@ function draw(){
 const ABK=[['shield','Q','Shield','shield'],['warp','E','Time Warp','timewarp'],['nova','R','Nova','nova'],['beam','T','Spin Beam','beam'],['overcharge','F','Overcharge','overcharge'],['mend','G','Mend','mend']];
 function buildAbil(){
   const owned=ABK.filter(a=>S.lv[a[3]]);
-  $('abil').innerHTML=owned.map(a=>`<button class="ab" data-k="${a[0]}"></button>`).join('');
-  $('abil').querySelectorAll('.ab').forEach(b=>b.onpointerdown=e=>{e.stopPropagation();useAbility(b.dataset.k);});
+  $('abil').innerHTML='<button class="ab" data-k="core"></button>'+owned.map(a=>`<button class="ab" data-k="${a[0]}"></button>`).join('');
+  $('abil').querySelectorAll('.ab').forEach(b=>b.onpointerdown=e=>{
+    e.stopPropagation();
+    if(b.dataset.k==='core')S.coreOff=!S.coreOff;
+    else useAbility(b.dataset.k);
+  });
 }
 function updAbil(){
   $('abil').querySelectorAll('.ab').forEach(b=>{
+    if(b.dataset.k==='core'){b.textContent=S.coreOff?'Main turret: OFF':'Main turret: ON';return;}
     const a=ABK.find(x=>x[0]===b.dataset.k),c=S.cd[a[0]];
     b.textContent=`${a[1]} · ${a[2]} ${c>0?Math.ceil(c)+'s':'Ready'}`;
     b.disabled=c>0;
@@ -717,7 +742,7 @@ function hud(){
   $('ptT').textContent=fmt(S.points);
   $('wvT').textContent=S.wave;
   $('hpb').style.width=Math.max(0,S.hp/S.maxHp*100)+'%';
-  $('hpT').textContent=`HP ${Math.max(0,Math.ceil(S.hp))}/${S.maxHp}`;
+  $('hpT').textContent=`HP ${Math.max(0,Math.ceil(S.hp))}/${S.maxHp} · Kills ${S.kills}`;
   $('sel').textContent=(S.sel>=0?`Turret ${S.sel+1} controlled · hold to fire`:'');
 }
 
@@ -915,7 +940,7 @@ async function initAuth(){
   $('auth').classList.add('show');
 }
 async function loadBoard(){
-  const get=async m=>{try{return await (await fetch('/api/scores?mode='+m)).json();}catch(e){return [];}};
+  const get=async m=>{try{const a=await (await fetch('/api/scores?mode='+m)).json();return a.filter(t=>(t.mode||'normal')===m);}catch(e){return [];}};
   boardCache={normal:await get('normal'),hard:await get('hard')};
 }
 function boardHTML(){
