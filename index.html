@@ -352,10 +352,10 @@ function abilText(){
 }
 function spawnBoss(){
   const n=S.wave/15;
-  const hp=16384*Math.pow(2,n)*(S.mode==='hard'?4:1);
-  const T={n:24,name:'Boss',k:18,hp,pts:Math.round(hp/4),r:64,spd:16,dmg:40+10*n,minW:1};
+  const hp=4096*Math.pow(2,n-1)*(S.mode==='hard'?4:1);
+  const T={n:24,name:'Boss',k:18,hp,pts:Math.round(hp/4),r:64,spd:16,dmg:25+8*n,minW:1};
   const a=Math.random()*TAU,R2=Math.hypot(cw,ch)/2+80;
-  S.shapes.push({t:T,x:cx+Math.cos(a)*R2,y:cy+Math.sin(a)*R2,hp,max:hp,r:T.r,rot:0,fl:0,dead:false,age:0,arm:0.5,boss:true});
+  S.shapes.push({t:T,x:cx+Math.cos(a)*R2,y:cy+Math.sin(a)*R2,hp,max:hp,r:T.r,rot:0,fl:0,dead:false,age:0,arm:Math.min(0.5,0.2+0.06*n),boss:true});
   banner('BOSS INCOMING');SFX.quake();addShake(6);
 }
 function killShape(s){
