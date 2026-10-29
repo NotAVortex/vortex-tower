@@ -912,13 +912,88 @@ function continueNormal(){
 let ACC=null, boardCache={normal:[],hard:[],endless:[]}, saveTimer=null;
 const tokenGet=()=>{try{return localStorage.getItem('stoken')||'';}catch(e){return '';}};
 const tokenSet=t=>{try{t?localStorage.setItem('stoken',t):localStorage.removeItem('stoken');}catch(e){}};
+// GitHub Pages has no server, so accounts, saves and leaderboards live in this browser's localStorage.
+// api() answers the same routes the old Netlify functions did.
+const DB={
+  get(k,d){try{const v=JSON.parse(localStorage.getItem(k));return v==null?d:v;}catch(e){return d;}},
+  set(k,v){localStorage.setItem(k,JSON.stringify(v));}
+};
+const hexOf=buf=>[...new Uint8Array(buf)].map(x=>x.toString(16).padStart(2,'0')).join('');
+async function hashPass(pass,salt){
+  const key=await crypto.subtle.importKey('raw',new TextEncoder().encode(pass),'PBKDF2',false,['deriveBits']);
+  const bits=await crypto.subtle.deriveBits({name:'PBKDF2',salt:new TextEncoder().encode(salt),iterations:100000,hash:'SHA-256'},key,256);
+  return hexOf(bits);
+}
 async function api(path,opt={}){
-  const h={'Content-Type':'application/json'};
-  if(tokenGet())h.authorization='Bearer '+tokenGet();
-  const r=await fetch(path,Object.assign({},opt,{headers:h}));
-  const j=await r.json().catch(()=>({}));
-  if(!r.ok)throw new Error(j.error||('Error '+r.status));
-  return j;
+  const method=(opt.method||'GET').toUpperCase();
+  const [route,qs]=path.split('?');
+  const body=opt.body?JSON.parse(opt.body):{};
+  const fail=(msg,status=400)=>{const e=new Error(msg);e.status=status;throw e;};
+  const accounts=DB.get('st_accounts',{});
+
+  if(method==='POST'&&(route==='/api/auth/register'||route==='/api/auth/login')){
+    const name=String(body.user||'').trim(), pass=String(body.pass||'');
+    if(!/^[a-zA-Z0-9_]{3,16}$/.test(name))fail('Name must be 3-16 letters, numbers or _');
+    if(pass.length<6)fail('Password must be at least 6 characters');
+    const key=name.toLowerCase();
+    let rec=accounts[key];
+    if(route.endsWith('register')){
+      if(rec)fail('That name is taken',409);
+      const salt=crypto.randomUUID();
+      rec=accounts[key]={name,salt,hash:await hashPass(pass,salt),slots:[null,null,null]};
+    }else{
+      if(!rec)fail('No account with that name',404);
+      if((await hashPass(pass,rec.salt))!==rec.hash)fail('Wrong password',401);
+    }
+    DB.set('st_accounts',accounts);
+    const token=crypto.randomUUID()+crypto.randomUUID(), sessions=DB.get('st_sessions',{});
+    sessions[token]={user:key,exp:Date.now()+30*864e5};
+    DB.set('st_sessions',sessions);
+    return {token,name:rec.name};
+  }
+
+  if(route==='/api/scores'){
+    const KEYS=['normal','hard','endless'];
+    const boards=DB.get('st_scores',{normal:[],hard:[],endless:[]});
+    if(method==='POST'){
+      const mode=KEYS.includes(body.mode)?body.mode:'normal';
+      const name=String(body.name||'Anon').slice(0,16).replace(/[<>]/g,'');
+      const score=Math.max(0,Math.min(1e9,Math.floor(Number(body.score)||0)));
+      const list=boards[mode]||[];
+      const entry={name,score,mode,wave:Number(body.wave)||1,date:Date.now()};
+      const i=list.findIndex(t=>String(t.name).toLowerCase()===name.toLowerCase());
+      // one entry per name: only replace it if the new score is better
+      if(i>=0){if(score>list[i].score)list[i]=entry;}else list.push(entry);
+      list.sort((a,c)=>c.score-a.score);
+      boards[mode]=list.slice(0,50);
+      DB.set('st_scores',boards);
+      return {ok:true};
+    }
+    const mode=KEYS.includes(new URLSearchParams(qs||'').get('mode'))?new URLSearchParams(qs).get('mode'):'normal';
+    const best=new Map();
+    for(const t of boards[mode]||[]){const k=String(t.name).toLowerCase();if(!best.has(k)||t.score>best.get(k).score)best.set(k,t);}
+    return [...best.values()].sort((a,c)=>c.score-a.score).slice(0,10);
+  }
+
+  // everything below needs a logged-in session
+  const sess=DB.get('st_sessions',{})[tokenGet()];
+  if(!sess||sess.exp<Date.now())fail('Not logged in',401);
+  const key=sess.user, rec=accounts[key];
+  if(!rec)fail('Account missing',404);
+
+  if(method==='GET'&&route==='/api/auth/me')return {name:rec.name,slots:rec.slots||[null,null,null]};
+  if(method==='POST'&&route==='/api/auth/save'){
+    if(JSON.stringify(body.save||null).length>20000)fail('Save too large',413);
+    rec.slots=rec.slots||[null,null,null];
+    rec.slots[+body.slot||0]=body.save||null;
+    DB.set('st_accounts',accounts);
+    return {ok:true};
+  }
+  if(method==='POST'&&route==='/api/auth/logout'){
+    const s=DB.get('st_sessions',{});delete s[tokenGet()];DB.set('st_sessions',s);
+    return {ok:true};
+  }
+  fail('Not found',404);
 }
 function runSnap(){return {points:S.points,kills:S.kills,wave:S.wave,wu:S.wu,lv:Object.assign({},S.lv),maxHp:S.maxHp};}
 function loadRun(r){
@@ -1018,14 +1093,14 @@ async function initAuth(){
   $('auth').classList.add('show');
 }
 async function loadBoard(){
-  const get=async m=>{try{const a=await (await fetch('/api/scores?mode='+m)).json();return a.filter(t=>(t.mode||'normal')===m);}catch(e){return [];}};
+  const get=async m=>{try{const a=await api('/api/scores?mode='+m);return a.filter(t=>(t.mode||'normal')===m);}catch(e){return [];}};
   boardCache={normal:await get('normal'),hard:await get('hard'),endless:await get('endless')};
 }
 function boardHTML(){
   const list=arr=>arr&&arr.length?arr.map((t,i)=>`<div class="up"><div><b>${i+1}. ${t.name}</b></div><span>${fmt(t.score)}</span></div>`).join(''):'<p>No scores yet.</p>';
   return '<div class="sec">Normal leaderboard</div>'+list(boardCache.normal)+
     '<div class="sec">Hard leaderboard</div>'+list(boardCache.hard)+'<div class="sec">Endless leaderboard</div>'+list(boardCache.endless)+
-    (ACC?'':'<p>Log in to post your score.</p>');
+    '<p>Scores are saved in this browser only.</p>'+(ACC?'':'<p>Log in to post your score.</p>');
 }
 $('bLogin').onclick=()=>authCall('login');
 $('bReg').onclick=()=>authCall('register');
