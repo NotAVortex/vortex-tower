@@ -675,7 +675,7 @@ function draw(){
     ctx.restore();
   }
   // particles
-  for(const p of (SET.low?S.parts.slice(0,25):S.parts)){ctx.globalAlpha=Math.max(0,Math.min(1,p.life*2));ctx.fillStyle=p.col;ctx.fillRect(p.x-2,p.y-2,4,4);}
+  for(const p of S.parts){ctx.globalAlpha=Math.max(0,Math.min(1,p.life*2));ctx.fillStyle=p.col;ctx.fillRect(p.x-2,p.y-2,4,4);}
   ctx.globalAlpha=1;
 
   // floating text
@@ -761,7 +761,7 @@ function renderMenu(){
     }).join('');
   }
   $('list').innerHTML=h;
-  $('list').querySelectorAll('[data-buy]').forEach(b=>b.onclick=()=>buyN(b.dataset.id,+b.dataset.n));
+  $('list').querySelectorAll('[data-buy]').forEach(b=>b.onclick=()=>buyN(b.dataset.buy,+b.dataset.n));
   $('list').querySelectorAll('[data-world]').forEach(b=>b.onclick=()=>buyWorld(+b.dataset.world));
   $('list').querySelectorAll('[data-c]').forEach(b=>b.onclick=()=>{SET.color=+b.dataset.c;applyTheme();save();renderMenu();});
   $('list').querySelectorAll('[data-tog]').forEach(b=>b.onclick=()=>{const k=b.dataset.tog;SET[k]=!SET[k];if(SET[k]&&k==='ultra')SET.low=false;if(SET[k]&&k==='low')SET.ultra=false;save();document.body.classList.toggle('low',!!SET.low);renderMenu();});
