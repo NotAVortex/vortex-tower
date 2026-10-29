@@ -761,7 +761,7 @@ function renderMenu(){
     }).join('');
   }
   $('list').innerHTML=h;
-  $('list').querySelectorAll('[data-buy]').forEach(b=>b.onclick=()=>buyN(b.dataset.buy,+b.dataset.n));
+  $('list').onclick=e=>{const b=e.target.closest&&e.target.closest('[data-buy]');if(b&&!b.disabled)buyN(b.dataset.buy,+b.dataset.n);};
   $('list').querySelectorAll('[data-world]').forEach(b=>b.onclick=()=>buyWorld(+b.dataset.world));
   $('list').querySelectorAll('[data-c]').forEach(b=>b.onclick=()=>{SET.color=+b.dataset.c;applyTheme();save();renderMenu();});
   $('list').querySelectorAll('[data-tog]').forEach(b=>b.onclick=()=>{const k=b.dataset.tog;SET[k]=!SET[k];if(SET[k]&&k==='ultra')SET.low=false;if(SET[k]&&k==='low')SET.ultra=false;save();document.body.classList.toggle('low',!!SET.low);renderMenu();});
