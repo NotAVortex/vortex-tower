@@ -39,6 +39,7 @@ canvas{display:block;width:100vw;height:100vh}
 .sw button{padding:8px 12px;border:3px solid transparent;border-radius:10px;cursor:pointer;color:#fff;font-weight:700}
 .sw button.on{border-color:#fff}
 .sec{font-weight:700;margin-top:6px;color:#dfe3ff}
+.in{width:100%;padding:12px;margin:6px 0;border-radius:10px;border:1px solid hsl(var(--h) 60% 50% / .4);background:rgba(0,0,0,.3);color:#fff;font-size:16px}
 #money,#wbox{position:fixed;left:10px;padding:6px 12px;border-radius:10px;background:rgba(8,10,26,.6);border:1px solid hsl(var(--h) 60% 50% / .25);font-size:13px;pointer-events:none;color:hsl(var(--h) 100% 85%)}
 #money{bottom:58px}
 #wbox{bottom:12px}
@@ -58,7 +59,7 @@ canvas{display:block;width:100vw;height:100vh}
 <div id="wbox">🌊 Wave <b id="wvT">1</b> · World <b id="wlN">1</b></div>
 <button id="btn">⬆ Upgrades (U)</button>
 
-<div class="overlay show" id="start">
+<div class="overlay" id="start">
   <div class="panel">
     <h2>Shape Tower</h2>
     <p>Your core sits in the middle. Shapes drift in from every side. Your core fires automatically, aiming at your pointer.</p>
@@ -70,6 +71,18 @@ canvas{display:block;width:100vw;height:100vh}
   </div>
 </div>
 
+<div class="overlay show" id="auth">
+  <div class="panel">
+    <h2>Shape Tower</h2>
+    <p id="authMsg">Log in to save your progress and post on the leaderboard.</p>
+    <input class="in" id="u" placeholder="Username" maxlength="16" autocomplete="username">
+    <input class="in" id="p" type="password" placeholder="Password (6+ characters)" autocomplete="current-password">
+    <button class="big" id="bLogin">Log in</button>
+    <button class="big" id="bReg" style="background:#2d3150">Create account</button>
+    <p style="font-size:13px;opacity:.85">Guest: your progress will be reset when you leave, and you can't post scores.</p>
+    <button class="big" id="bGuest" style="background:#2d3150">Play as guest (progress will be reset)</button>
+  </div>
+</div>
 <div class="overlay" id="menu">
   <button class="xb" id="x">✕</button>
   <div class="panel">
@@ -147,8 +160,8 @@ let TH=225;
 
 // ---- persistence ----
 let R={rb:0}, SET={color:0,sound:true,shake:true};
-try{const d=JSON.parse(localStorage.getItem('stower2')||'null');if(d){R.rb=d.rb|0;Object.assign(SET,d.set||{});}}catch(e){}
-function save(){try{localStorage.setItem('stower2',JSON.stringify({rb:R.rb,set:SET}));}catch(e){}}
+try{const d=JSON.parse(localStorage.getItem('stower2')||'null');if(d){Object.assign(SET,d.set||{});}}catch(e){}
+function save(){try{localStorage.setItem('stower2',JSON.stringify({set:SET}));}catch(e){}}
 function applyTheme(){TH=THEMES[SET.color].h;document.documentElement.style.setProperty('--h',TH);}
 applyTheme();
 
@@ -608,7 +621,7 @@ function hud(){
   const sig=ABK.map(a=>S.lv[a[3]]||0).join();
   if(sig!==S.absig){S.absig=sig;buildAbil();}
   updAbil();
-  $('wlN').textContent=S.wu;
+  $('wlN').textContent=S.wu+(ACC?'':' · guest, not saved');
   $('ptT').textContent=fmt(S.points);
   $('wvT').textContent=S.wave;
   $('hpb').style.width=Math.max(0,S.hp/S.maxHp*100)+'%';
@@ -617,13 +630,15 @@ function hud(){
 }
 
 // ---- menus ----
-const TABS=[['tower','Tower'],['drones','Drones'],['turrets','Turrets'],['quake','Quake'],['abilities','Abilities'],['worlds','Worlds'],['settings','Settings']];
+const TABS=[['tower','Tower'],['drones','Drones'],['turrets','Turrets'],['quake','Quake'],['abilities','Abilities'],['worlds','Worlds'],['board','Board'],['settings','Settings']];
 function renderMenu(){
   $('tabs').innerHTML=TABS.map(([k,n])=>`<button data-t="${k}" class="${S.tab===k?'on':''}">${n}</button>`).join('');
-  $('tabs').querySelectorAll('button').forEach(b=>b.onclick=()=>{S.tab=b.dataset.t;renderMenu();});
+  $('tabs').querySelectorAll('button').forEach(b=>b.onclick=()=>{S.tab=b.dataset.t;if(S.tab==='board')loadBoard().then(renderMenu);renderMenu();});
   $('pts2').textContent=fmt(S.points);
   let h='';
-  if(S.tab==='worlds'){
+  if(S.tab==='board'){
+    h=boardHTML();
+  }else if(S.tab==='worlds'){
     h=WORLDS.map((w,i)=>{
       const owned=i<S.wu,next=i===S.wu,c=w.cost;
       const btn=owned?'<span style="color:#8f8">Owned</span>':next?`<button data-world="${i}" ${S.points<c?'disabled':''}>${fmt(c)} pts</button>`:'<span style="color:#667">Locked</span>';
@@ -633,6 +648,7 @@ function renderMenu(){
     h=`<div class="sec">Theme (recolors everything)</div><div class="sw">${THEMES.map((t,i)=>`<button data-c="${i}" class="${i===SET.color?'on':''}" style="background:hsl(${t.h}, 80%, 50%)">${t.n}</button>`).join('')}</div>`+
       `<div class="up"><div><b>Sound effects</b></div><button data-tog="sound">${SET.sound?'On':'Off'}</button></div>`+
       `<div class="up"><div><b>Screen shake</b></div><button data-tog="shake">${SET.shake?'On':'Off'}</button></div>`+
+      `<div class="up"><div><b>Account</b><small>${ACC?'Logged in as '+ACC.name:'Guest: progress resets when you leave'}</small></div>${ACC?'<button data-logout="1">Log out</button>':'<button data-login="1">Log in</button>'}</div>`+
       `<div class="up"><div><b>Rebirths</b><small>Each one: +50% points and +1 damage, forever</small></div><span>${R.rb}</span></div>`;
   }else{
     h=UPG[S.tab].map(u=>{
@@ -646,6 +662,8 @@ function renderMenu(){
   $('list').querySelectorAll('[data-world]').forEach(b=>b.onclick=()=>buyWorld(+b.dataset.world));
   $('list').querySelectorAll('[data-c]').forEach(b=>b.onclick=()=>{SET.color=+b.dataset.c;applyTheme();save();renderMenu();});
   $('list').querySelectorAll('[data-tog]').forEach(b=>b.onclick=()=>{const k=b.dataset.tog;SET[k]=!SET[k];save();renderMenu();});
+  $('list').querySelectorAll('[data-logout]').forEach(b=>b.onclick=logout);
+  $('list').querySelectorAll('[data-login]').forEach(b=>b.onclick=()=>{closeMenu();$('auth').classList.add('show');});
   $('rb').style.display=S.wu===WORLDS.length?'block':'none';
   $('rb').textContent='✦ Rebirth (+50% points, +1 damage forever)';
 }
@@ -653,7 +671,7 @@ function buy(id){
   const u=ALLUP.find(x=>x.id===id),lv=S.lv[id];
   if(lv>=u.m)return;
   const c=cost(u.b,lv);if(S.points<c)return;
-  S.points-=c;S.lv[id]++;SFX.buy();
+  S.points-=c;S.lv[id]++;SFX.buy();saveSoon();
   if(id==='hp'){S.maxHp+=25;S.hp=Math.min(S.maxHp,S.hp+25);}
   if(id==='tur'){S.sel=S.sel>=S.lv.tur?-1:S.sel;}
   renderMenu();
@@ -661,7 +679,7 @@ function buy(id){
 function buyWorld(i){
   const w=WORLDS[i];
   if(i!==S.wu||S.points<w.cost)return;
-  S.points-=w.cost;S.wu++;SFX.wave();
+  S.points-=w.cost;S.wu++;SFX.wave();saveSoon();
   banner(`WORLD ${S.wu}: ${WORLDS[S.wu-1].name.toUpperCase()}`);
   renderMenu();
 }
@@ -670,30 +688,29 @@ function closeMenu(){S.menu=false;$('menu').classList.remove('show');}
 function toggleMenu(){S.menu?closeMenu():openMenu();}
 function rebirth(){
   if(S.wu!==WORLDS.length)return;
-  R.rb++;save();
+  R.rb++;save();saveSoon();
   S=Object.assign(newState(),{tab:S.tab});
   closeMenu();
   banner('REBORN ×'+R.rb);SFX.wave();
 }
 function startGame(){
   const a=ac();if(a&&a.state==='suspended')a.resume();
-  S=newState();
+  S=newState();applySave();
   $('start').classList.remove('show');$('over').classList.remove('show');
   closeMenu();
 }
 async function submitScore(){
-  const name=(prompt('Name for the leaderboard:')||'Anon').slice(0,16);
+  const box=$('overBody');
+  if(!ACC){box.insertAdjacentHTML('beforeend','<p>Log in to post your score to the leaderboard.</p>');return;}
   const score=S.wave*100+S.kills;
   try{
-    await fetch('/api/scores',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({name,score,wave:S.wave})});
-    const top=await (await fetch('/api/scores')).json();
-    $('overBody').insertAdjacentHTML('beforeend','<h3>Top scores</h3>'+
-      top.map((t,i)=>`<p>${i+1}. ${t.name}: ${t.score}</p>`).join(''));
+    await api('/api/scores',{method:'POST',body:JSON.stringify({name:ACC.name,score,wave:S.wave})});
+    await loadBoard();
+    box.insertAdjacentHTML('beforeend','<h3>Top scores</h3>'+boardCache.slice(0,5).map((t,i)=>`<p>${i+1}. ${t.name}: ${t.score}</p>`).join(''));
   }catch(e){}
 }
 function gameOver(){
-  S.over=true;S.hold=false;
+  S.over=true;S.hold=false;saveNow();
   $('overBody').innerHTML=`<h2>Game Over</h2><p>World: <b>${S.wu} · ${WORLDS[S.wu-1].name}</b></p>
     <p>Wave: <b>${S.wave}</b> · Kills: <b>${S.kills}</b></p>
     <button class="big" id="again">Play Again</button>`;
@@ -701,6 +718,62 @@ function gameOver(){
   $('again').onclick=startGame;
   submitScore();
 }
+
+// ---- accounts, saves and leaderboard ----
+let ACC=null, boardCache=[], saveTimer=null;
+const tokenGet=()=>{try{return localStorage.getItem('stoken')||'';}catch(e){return '';}};
+const tokenSet=t=>{try{t?localStorage.setItem('stoken',t):localStorage.removeItem('stoken');}catch(e){}};
+async function api(path,opt={}){
+  const h={'Content-Type':'application/json'};
+  if(tokenGet())h.authorization='Bearer '+tokenGet();
+  const r=await fetch(path,Object.assign({},opt,{headers:h}));
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok)throw new Error(j.error||('Error '+r.status));
+  return j;
+}
+function snapshot(){return {points:S.points,kills:S.kills,wave:S.wave,wu:S.wu,lv:S.lv,maxHp:S.maxHp,rb:R.rb};}
+function saveSoon(){if(!ACC||!S.started)return;clearTimeout(saveTimer);saveTimer=setTimeout(saveNow,1200);}
+function saveNow(){if(!ACC||!S.started)return;api('/api/auth/save',{method:'POST',body:JSON.stringify({save:snapshot()})}).catch(()=>{});}
+function applySave(){
+  if(!ACC||!ACC.save)return;
+  const d=ACC.save;
+  R.rb=d.rb|0;
+  S.points=d.points||0;S.kills=d.kills||0;S.wave=d.wave||1;S.wu=d.wu||1;
+  S.maxHp=d.maxHp||150;S.hp=S.maxHp;
+  if(d.lv)for(const k in S.lv)S.lv[k]=d.lv[k]||0;
+}
+async function refreshAccount(){const j=await api('/api/auth/me');ACC={name:j.name,save:j.save};}
+function enterStart(){$('auth').classList.remove('show');if(!S.started)$('start').classList.add('show');}
+async function authCall(kind){
+  const user=$('u').value.trim(),pass=$('p').value;
+  $('authMsg').textContent='Working…';
+  try{
+    const j=await api('/api/auth/'+kind,{method:'POST',body:JSON.stringify({user,pass})});
+    tokenSet(j.token);
+    await refreshAccount();
+    enterStart();
+  }catch(e){$('authMsg').textContent=e.message;}
+}
+function guestPlay(){ACC=null;enterStart();}
+async function logout(){
+  try{await api('/api/auth/logout',{method:'POST'});}catch(e){}
+  tokenSet('');location.reload();
+}
+async function initAuth(){
+  if(tokenGet()){try{await refreshAccount();enterStart();return;}catch(e){tokenSet('');}}
+  $('auth').classList.add('show');
+}
+async function loadBoard(){try{boardCache=await (await fetch('/api/scores')).json();}catch(e){boardCache=[];}}
+function boardHTML(){
+  return '<div class="sec">Top scores</div>'+
+    (boardCache.length?boardCache.map((t,i)=>`<div class="up"><div><b>${i+1}. ${t.name}</b></div><span>${fmt(t.score)}</span></div>`).join(''):'<p>No scores yet.</p>')+
+    (ACC?'':'<p>Log in to post your score.</p>');
+}
+$('bLogin').onclick=()=>authCall('login');
+$('bReg').onclick=()=>authCall('register');
+$('bGuest').onclick=guestPlay;
+setInterval(saveSoon,30000);
+initAuth();
 
 $('go').onclick=startGame;
 $('btn').onclick=toggleMenu;
