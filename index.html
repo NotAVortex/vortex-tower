@@ -9,7 +9,7 @@
 *{box-sizing:border-box}
 html,body{margin:0;height:100%;background:#070913;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;color:#eef;overflow:hidden;user-select:none;touch-action:none}
 canvas{display:block;width:100vw;height:100vh}
-#hud{position:fixed;top:10px;left:10px;width:150px;padding:7px 10px;border-radius:10px;background:rgba(8,10,26,.55);backdrop-filter:blur(8px);border:1px solid hsl(var(--h) 60% 50% / .25);pointer-events:none;box-shadow:0 8px 30px rgba(0,0,0,.4)}
+#hud{position:fixed;top:10px;left:10px;width:150px;padding:7px 10px;border-radius:10px;background:rgba(8,10,26,.8);border:1px solid hsl(var(--h) 60% 50% / .25);pointer-events:none;box-shadow:0 8px 30px rgba(0,0,0,.4)}
 #wl{font-size:12px;letter-spacing:.08em;text-transform:uppercase;opacity:.85}
 #ptT{font-size:24px;font-weight:800;margin:2px 0 6px;color:hsl(var(--h) 100% 85%);text-shadow:0 0 12px hsl(var(--h) 100% 70% / .5)}
 .bar{height:8px;border-radius:8px;background:rgba(255,255,255,.1);overflow:hidden}
@@ -190,16 +190,19 @@ function noiseSrc(ac){
   return NB;
 }
 // every sound is a small patch: an oscillator or noise, a filter that sweeps, and a fast envelope
-let voices=0, budget=22, budgetT=performance.now();
+// each sound has its own limit of how many times it can play per second
+const SFX_BUDGET={shoot:14,turret:8,hit:14,kill:14,hurt:8,quake:4,pulse:4,buy:8,wave:4};
+const sfxCount={}, sfxWin={};
+let voices=0, sfxKey='';
 function play(fn){
   if(!SET.sound)return;
-  const now=performance.now();
-  if(now-budgetT>=1000){budget=22;budgetT=now;}
-  if(!sfxPrio&&budget<=0)return;
-  if(voices>=(sfxPrio?16:10))return;
+  const k=sfxKey, now=performance.now();
+  if(!sfxWin[k]||now-sfxWin[k]>=1000){sfxWin[k]=now;sfxCount[k]=0;}
+  if((sfxCount[k]||0)>=(SFX_BUDGET[k]||8))return;
+  if(voices>=16)return;
   const x=ac();if(!x)return;
   if(x.state==='suspended')x.resume();
-  budget--;voices++;setTimeout(()=>voices--,450);
+  sfxCount[k]=(sfxCount[k]||0)+1;voices++;setTimeout(()=>voices--,450);
   try{fn(x,x.currentTime);}catch(e){}
 }
 function sweep(x,t,f0,f1,d,type,v,filt=0,delay=0){
@@ -276,7 +279,7 @@ for(const k in SFX){
   SFX[k]=(...args)=>{
     const now=performance.now();
     if(now-(sfxLast[k]||0)<(SFX_GAP[k]||100))return;
-    sfxLast[k]=now;sfxPrio=PRIO.has(k);try{f(...args);}finally{sfxPrio=false;}
+    sfxLast[k]=now;sfxKey=k;try{f(...args);}finally{sfxKey='';}
   };
 }
 
@@ -939,7 +942,7 @@ addEventListener('pointerdown',e=>{
   ptr={x:e.clientX,y:e.clientY};
   if(!S.started||S.menu||S.over||e.target!==cv)return;
   const i=turretAt(e.clientX,e.clientY);
-  if(i>=0)S.sel=i;else if(S.sel>=0)S.hold=true;
+  if(i>=0)S.sel=S.sel===i?-1:i;else if(S.sel>=0)S.hold=true;
 });
 addEventListener('pointerup',()=>{S.hold=false;});
 addEventListener('keydown',e=>{
