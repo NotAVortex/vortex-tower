@@ -793,7 +793,7 @@ function btnsFor(u,c,maxed){
   if(u.m===1)return `<button data-buy="${u.id}" data-n="1" ${dis}>${fmt(c)} pts</button>`;
   return `<button data-buy="${u.id}" data-n="1" ${dis}>${fmt(c)}</button>`+
     `<button data-buy="${u.id}" data-n="10" ${dis}>x10 ${fmt(sumCost(u,10))}</button>`+
-    `<button data-buy="${u.id}" data-n="999" ${dis}>MAX ${fmt(sumCost(u,999))}</button>`;
+    `<button data-buy="${u.id}" data-n="999" ${dis}>MAX</button>`;
 }
 function renderMenu(){
   $('tabs').innerHTML=TABS.filter(([k])=>k==='worlds'?S.mode!=='endless':k==='multipliers'?S.mode==='endless':true).map(([k,n])=>`<button data-t="${k}" class="${S.tab===k?'on':''}">${n}</button>`).join('');
