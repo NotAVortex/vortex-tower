@@ -77,12 +77,12 @@ body.low *{backdrop-filter:none!important;transition:none!important}
 <div class="overlay show" id="auth">
   <div class="panel">
     <h2>Shape Tower</h2>
-    <p id="authMsg">Log in to save your progress and post on the leaderboard.</p>
+    <p id="authMsg">Log in to save your progress on this device.</p>
     <input class="in" id="u" placeholder="Username" maxlength="16" autocomplete="username">
     <input class="in" id="p" type="password" placeholder="Password (6+ characters)" autocomplete="current-password">
     <button class="big" id="bLogin">Log in</button>
     <button class="big" id="bReg" style="background:#2d3150">Create account</button>
-    <p style="font-size:13px;opacity:.85">Guest: your progress will be reset when you leave, and you can't post scores.</p>
+    <p style="font-size:13px;opacity:.85">Guest: your progress will be reset when you leave.</p>
     <button class="big" id="bGuest" style="background:#2d3150">Play as guest (progress will be reset)</button>
   </div>
 </div>
@@ -300,13 +300,14 @@ for(const k in SFX){
 
 // ---- state ----
 const stars=Array.from({length:150},()=>({a:Math.random()*TAU,d:Math.random()*900,s:20+Math.random()*60}));
+const LOWSTARS=stars.filter((_,i)=>i%4===0);
 let S={started:false,menu:false,over:false,tab:'tower',wu:1,lv:{}};
 function newState(){
   const lv={};for(const u of ALLUP)lv[u.id]=0;
   return {started:true,menu:false,over:false,tab:S.tab||'tower',t:0,hp:150,maxHp:150,points:0,kills:0,
     wave:1,wk:0,wu:1,shapes:[],bullets:[],parts:[],texts:[],gp:[],qs:[],
     spawnT:0.5,gpT:0,qT:2,fireT:0,botT:[],tcd:[],ta:[],sel:-1,hold:false,
-    ang:-Math.PI/2,flash:0,muzzle:0,shake:0,shieldT:0,warpT:0,cd:{shield:0,warp:0,nova:0,beam:0,overcharge:0,mend:0},beamT:0,beamA:0,ovT:0,coreOff:false,recoil:0,trec:[],tv:[],rings:[],mode:S.mode||'normal',normalSnap:S.normalSnap||null,lv};
+    ang:-Math.PI/2,flash:0,sf:0,sfc:'#fff',muzzle:0,shake:0,shieldT:0,warpT:0,cd:{shield:0,warp:0,nova:0,beam:0,overcharge:0,mend:0},beamT:0,beamA:0,ovT:0,coreOff:false,recoil:0,trec:[],tv:[],rings:[],mode:S.mode||'normal',normalSnap:S.normalSnap||null,lv};
 }
 let ptr=null;
 const wcost=w=>Math.round(w.cost*Math.pow(1.5,R.rb||0)*(S.mode==='hard'?3:1));
@@ -333,10 +334,13 @@ function nearest(x,y,range,pred=s=>!s.dead){
   return best;
 }
 function burst(x,y,col,n){
-  for(let i=0;i<n*(SET.ultra?2:1);i++){const a=Math.random()*TAU,v=60+Math.random()*200;
+  if(SET.low)return; // particles are not drawn in low mode, so skip the work
+  for(let i=0;i<n*(SET.ultra?1.5:1);i++){const a=Math.random()*TAU,v=60+Math.random()*200;
     S.parts.push({x,y,vx:Math.cos(a)*v,vy:Math.sin(a)*v,life:0.5+Math.random()*0.45,col});}
 }
-function addShake(a){if(SET.shake)S.shake=Math.max(S.shake,a*(SET.ultra?1.5:1));}
+function addShake(a){if(SET.shake)S.shake=Math.max(S.shake,Math.min(SET.low?4:99,a*(SET.ultra?1.5:1)));}
+// full-screen flash, ultra mode only; the strongest current flash wins
+function screenFlash(col,a){if(SET.ultra&&a>S.sf){S.sf=a;S.sfc=col;}}
 function banner(t){S.texts.push({x:cx,y:cy-150,t,life:1.8,col:'#fff',big:1});}
 function turretPos(i){const n=S.lv.tur,a=i*TAU/n;return [cx+Math.cos(a)*100,cy+Math.sin(a)*100,a];}
 function turretAt(x,y){for(let i=0;i<S.lv.tur;i++){const [tx,ty]=turretPos(i);if(Math.hypot(x-tx,y-ty)<22)return i;}return -1;}
@@ -354,7 +358,7 @@ function useAbility(k){
     S.texts.push({x:cx,y:cy-50,t:'+'+heal,life:1,col:'#6fff9a'});
   }
   if(k==='nova'){
-    S.cd.nova=40;addShake(10);SFX.quake();banner('NOVA');
+    S.cd.nova=40;addShake(10);SFX.quake();banner('NOVA');screenFlash('#ffffff',0.7);
     for(const s of S.shapes){if(!onScreen(s))continue;s.hp-=40;s.fl=0.2;if(s.hp<=0)killShape(s);}
   }
 }
@@ -371,19 +375,19 @@ function spawnBoss(){
   const T={n:24,name:'Boss',k:18,hp,pts:Math.round(hp/4),r:64,spd:16,dmg:25+8*n,minW:1};
   const a=Math.random()*TAU,R2=Math.hypot(cw,ch)/2+80;
   S.shapes.push({t:T,x:cx+Math.cos(a)*R2,y:cy+Math.sin(a)*R2,hp,max:hp,r:T.r,rot:0,fl:0,dead:false,age:0,arm:Math.min(0.5,0.2+0.06*n),boss:true});
-  banner('BOSS INCOMING');SFX.quake();addShake(6);
+  banner('BOSS INCOMING');SFX.quake();addShake(6);screenFlash('#ffffff',0.6);
 }
 // the world used for enemy scaling: endless mode climbs 1 world every 5 waves
 function ew(){return S.mode==='endless'?Math.min(5,1+Math.floor((S.wave-1)/5)):S.wu;}
 function dmulF(){return S.mode==='endless'?Math.pow(1.2,S.lv.dmul||0):1;}
 function killShape(s){
   s.dead=true;
-  if(s.boss){banner('BOSS DEFEATED');addShake(10);}
+  if(s.boss){banner('BOSS DEFEATED');addShake(10);screenFlash('#ffd166',0.7);}
   const gain=Math.round(s.t.pts*pm());
   S.points+=gain;S.kills++;S.wk++;
   S.texts.push({x:s.x,y:s.y,t:'+'+fmt(gain),life:0.9,col:'#ffe066'});
   burst(s.x,s.y,shapeCol(s.t.k),18);SFX.kill();addShake(3);S.rings.push({x:s.x,y:s.y,r:s.r,life:0.4,col:shapeCol(s.t.k)});
-  if(S.wk>=5+S.wave*2){S.wave++;S.wk=0;SFX.wave();banner('WAVE '+S.wave);}
+  if(S.wk>=5+S.wave*2){S.wave++;S.wk=0;SFX.wave();banner('WAVE '+S.wave);screenFlash(accent(1),0.35);}
 }
 
 function update(dt){
@@ -396,6 +400,7 @@ function update(dt){
   for(const r of S.rings){r.life-=dt;r.r+=dt*180;}
   S.rings=S.rings.filter(r=>r.life>0);
   S.shake=Math.max(0,S.shake-dt*35);
+  S.sf=Math.max(0,S.sf-dt*3);
   const L=S.lv,diag=Math.hypot(cw,ch)/2;
   if(L.regen)S.hp=Math.min(S.maxHp,S.hp+L.regen*0.5*dt);
   for(const st of stars){st.d+=st.s*dt*(1+(ew()-1)*0.3);if(st.d>diag){st.d=0;st.a=Math.random()*TAU;}}
@@ -417,7 +422,7 @@ function update(dt){
       const bx=cx-s.x,by=cy-s.y,bd=Math.hypot(bx,by)||1;
       if(bd>s.r+70){s.x+=bx/bd*s.t.spd*sp*dt;s.y+=by/bd*s.t.spd*sp*dt;}
       else if(s.hitT===undefined||S.t-s.hitT>1.5){
-        s.hitT=S.t;S.hp-=s.t.dmg*(S.shieldT>0?0:1);S.flash=0.25;addShake(12);SFX.hurt();
+        s.hitT=S.t;S.hp-=s.t.dmg*(S.shieldT>0?0:1);S.flash=0.25;addShake(12);SFX.hurt();screenFlash('#ff2a4a',0.5);
         S.texts.push({x:cx,y:cy-40,t:'-'+s.t.dmg,life:0.8,col:'#ff6666'});
       }
       s.rot+=dt*0.2;s.fl=Math.max(0,s.fl-dt);
@@ -425,7 +430,7 @@ function update(dt){
     }
     const dx=cx-s.x,dy=cy-s.y,d=Math.hypot(dx,dy)||1;
     if(d<26+s.r){
-      S.hp-=s.t.dmg*(S.shieldT>0?0:1);S.flash=0.25;addShake(8);SFX.hurt();
+      S.hp-=s.t.dmg*(S.shieldT>0?0:1);S.flash=0.25;addShake(8);SFX.hurt();screenFlash('#ff2a4a',0.3);
       burst(cx-dx/d*26,cy-dy/d*26,'#ff5555',12);
       S.texts.push({x:cx,y:cy-40,t:'-'+s.t.dmg,life:0.8,col:'#ff6666'});
       s.dead=true;
@@ -498,7 +503,7 @@ function update(dt){
     S.qT-=dt;
     if(S.qT<=0){
       S.qs.push({r:0,max:120+L.qrad*25,dmg:2+L.qdmg*2+R.rb,hit:[]});
-      SFX.quake();S.qT=Math.max(1.2,5*Math.pow(0.93,L.qfreq));addShake(4);
+      SFX.quake();S.qT=Math.max(1.2,5*Math.pow(0.93,L.qfreq));addShake(4);screenFlash(accent(1),0.15);
     }
   }
   for(const q of S.qs){
@@ -558,27 +563,32 @@ function rrect(x,y,w,h,r){
   ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);
   ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();
 }
-const blA=document.createElement('canvas'),blB=document.createElement('canvas');
-const bxA=blA.getContext('2d'),bxB=blB.getContext('2d');
+const blA=document.createElement('canvas'),bxA=blA.getContext('2d');
+// cheap bloom: one tiny blurred copy of the frame, stretched back over the screen
 function bloomPass(){
-  const w=Math.max(1,Math.ceil(cv.width/4)),h=Math.max(1,Math.ceil(cv.height/4));
-  if(blA.width!==w||blA.height!==h){blA.width=w;blA.height=h;blB.width=w;blB.height=h;}
-  bxA.clearRect(0,0,w,h);bxA.filter='blur(8px)';bxA.drawImage(cv,0,0,w,h);
-  bxB.clearRect(0,0,w,h);bxB.filter='blur(16px)';bxB.drawImage(blA,0,0,w,h);
+  const w=Math.max(1,Math.ceil(cv.width/8)),h=Math.max(1,Math.ceil(cv.height/8));
+  if(blA.width!==w||blA.height!==h){blA.width=w;blA.height=h;}
+  bxA.clearRect(0,0,w,h);bxA.filter='blur(2px)';bxA.drawImage(cv,0,0,w,h);
   ctx.save();ctx.setTransform(1,0,0,1,0,0);ctx.globalCompositeOperation='lighter';
-  ctx.globalAlpha=0.35;ctx.drawImage(blA,0,0,cv.width,cv.height);
-  ctx.globalAlpha=0.55;ctx.drawImage(blB,0,0,cv.width,cv.height);
+  ctx.globalAlpha=0.6;ctx.drawImage(blA,0,0,cv.width,cv.height);
   ctx.restore();
 }
-// slowly drifting colour clouds behind everything (ultra only)
+// slowly drifting colour clouds behind everything (ultra only), drawn at quarter resolution every 4th frame
+const nebC=document.createElement('canvas'),nebX=nebC.getContext('2d');let nebF=0;
 function nebula(){
-  for(let i=0;i<4;i++){
-    const a=S.t*0.05+i*1.7,x=cx+Math.cos(a)*cw*0.3,y=cy+Math.sin(a*1.3)*ch*0.3;
-    const r=Math.max(cw,ch)*(0.35+0.1*Math.sin(S.t*0.3+i));
-    const g=ctx.createRadialGradient(x,y,0,x,y,r);
-    g.addColorStop(0,accent(0.1));g.addColorStop(1,'rgba(0,0,0,0)');
-    ctx.fillStyle=g;ctx.fillRect(0,0,cw,ch);
+  if(nebF++%4===0){
+    const w=Math.max(1,Math.ceil(cw/4)),h=Math.max(1,Math.ceil(ch/4));
+    if(nebC.width!==w||nebC.height!==h){nebC.width=w;nebC.height=h;}
+    nebX.setTransform(1,0,0,1,0,0);nebX.clearRect(0,0,w,h);nebX.setTransform(0.25,0,0,0.25,0,0);
+    for(let i=0;i<4;i++){
+      const a=S.t*0.05+i*1.7,x=cx+Math.cos(a)*cw*0.3,y=cy+Math.sin(a*1.3)*ch*0.3;
+      const r=Math.max(cw,ch)*(0.35+0.1*Math.sin(S.t*0.3+i));
+      const g=nebX.createRadialGradient(x,y,0,x,y,r);
+      g.addColorStop(0,accent(0.1));g.addColorStop(1,'rgba(0,0,0,0)');
+      nebX.fillStyle=g;nebX.fillRect(0,0,cw,ch);
+    }
   }
+  ctx.drawImage(nebC,0,0,cw,ch);
 }
 function draw(){
   const W=WORLDS[ew()-1]||WORLDS[0], wi=ew()-1;
@@ -623,7 +633,7 @@ function draw(){
 
   // starfield
   ctx.fillStyle='#fff';
-  for(const st of (SET.low?stars.filter((_,i)=>i%4===0):stars)){
+  for(const st of (SET.low?LOWSTARS:stars)){
     const x=cx+Math.cos(st.a)*st.d,y=cy+Math.sin(st.a)*st.d,r=0.6+st.d/450;
     ctx.globalAlpha=Math.min(1,st.d/160);ctx.fillRect(x,y,r,r);
   }
@@ -642,7 +652,8 @@ function draw(){
     }
     ctx.closePath();
     ctx.shadowColor=col;ctx.shadowBlur=SET.low?0:(SET.ultra?1.6:1)*(16);
-    ctx.fillStyle=s.fl>0?'#fff':col;ctx.fill();
+    ctx.fillStyle=col;ctx.fill();
+    if(s.fl>0){ctx.globalAlpha=Math.min(0.5,s.fl*6);ctx.fillStyle='#fff';ctx.fill();ctx.globalAlpha=1;}
     ctx.shadowBlur=SET.low?0:(SET.ultra?1.6:1)*(0);
     ctx.strokeStyle='rgba(255,255,255,.35)';ctx.lineWidth=1.5;ctx.stroke();
     ctx.fillStyle='#10131f';ctx.font=`bold ${Math.max(10,Math.min(16,s.r*0.85))}px system-ui`;
@@ -667,10 +678,11 @@ function draw(){
   const nb=Math.min(150,S.lv.bots),orbit=1.4*(1+0.1*S.lv.dspeed);
   for(let i=0;i<nb;i++){
     const [bx,by]=droneXY(i,nb,orbit);
-    ctx.shadowColor=accent(0.8);ctx.shadowBlur=SET.low?0:(SET.ultra?1.6:1)*(10);
+    if(SET.ultra){ctx.fillStyle=accent(0.22);ctx.beginPath();ctx.arc(bx,by,nb>20?8:11,0,TAU);ctx.fill();}
+    ctx.shadowColor=accent(0.8);ctx.shadowBlur=SET.low||SET.ultra?0:10;
     ctx.beginPath();ctx.arc(bx,by,nb>20?4:6,0,TAU);
     ctx.fillStyle=accent(1);ctx.fill();
-    ctx.shadowBlur=SET.low?0:(SET.ultra?1.6:1)*(0);ctx.strokeStyle='rgba(255,255,255,.35)';ctx.lineWidth=1;ctx.stroke();
+    ctx.shadowBlur=0;ctx.strokeStyle='rgba(255,255,255,.35)';ctx.lineWidth=1;ctx.stroke();
   }
 
   // turrets: same material and barrel as the core
@@ -692,7 +704,8 @@ function draw(){
   ctx.shadowColor=accent(1);ctx.shadowBlur=SET.low?0:(SET.ultra?1.6:1)*(26);
   const tg=ctx.createRadialGradient(-6,-6,4,0,0,28);
   tg.addColorStop(0,'#ffffff');tg.addColorStop(0.35,accent(1));tg.addColorStop(1,'#0b0d1f');
-  const pulse=Math.sin(S.t*3);rrect(-26-pulse/2,-26-pulse/2,52+pulse,52+pulse,11);ctx.fillStyle=S.flash>0?'#ff4d4d':accent(1);ctx.fill();ctx.strokeStyle='rgba(255,255,255,.35)';ctx.lineWidth=1.5;ctx.stroke();
+  const pulse=Math.sin(S.t*3);rrect(-26-pulse/2,-26-pulse/2,52+pulse,52+pulse,11);ctx.fillStyle=accent(1);ctx.fill();
+  if(S.flash>0){ctx.globalAlpha=Math.min(0.7,S.flash*2.8);ctx.fillStyle='#ff4d4d';ctx.fill();ctx.globalAlpha=1;}ctx.strokeStyle='rgba(255,255,255,.35)';ctx.lineWidth=1.5;ctx.stroke();
   ctx.shadowBlur=SET.low?0:(SET.ultra?1.6:1)*(0);
   ctx.rotate(S.ang);ctx.translate(-S.recoil*6,0);
   ctx.fillStyle=accent(1);ctx.fillRect(0,-6,38,12);
@@ -730,6 +743,7 @@ function draw(){
   if(!SET.low){const v=ctx.createRadialGradient(cx,cy,Math.min(cw,ch)*0.4,cx,cy,Math.hypot(cw,ch)/1.1);
   v.addColorStop(0,'rgba(0,0,0,0)');v.addColorStop(1,'rgba(0,0,0,.55)');
   ctx.fillStyle=v;ctx.fillRect(0,0,cw,ch);}
+  if(SET.ultra&&S.sf>0){ctx.globalAlpha=Math.min(1,S.sf);ctx.fillStyle=S.sfc;ctx.fillRect(0,0,cw,ch);ctx.globalAlpha=1;}
   if(SET.ultra)bloomPass();
 }
 
@@ -766,7 +780,7 @@ function hud(){
 }
 
 // ---- menus ----
-const TABS=[['tower','Tower'],['drones','Drones'],['turrets','Turrets'],['quake','Quake'],['abilities','Abilities'],['multipliers','Multipliers'],['worlds','Worlds'],['board','Board'],['settings','Settings']];
+const TABS=[['tower','Tower'],['drones','Drones'],['turrets','Turrets'],['quake','Quake'],['abilities','Abilities'],['multipliers','Multipliers'],['worlds','Worlds'],['settings','Settings']];
 function sumCost(u,n){let t=0,lv=S.lv[u.id];for(let i=0;i<n&&lv+i<u.m;i++)t+=cost(u.b,lv+i);return t;}
 function btnsFor(u,c,maxed){
   if(maxed)return '<button disabled>MAX</button>';
@@ -778,12 +792,10 @@ function btnsFor(u,c,maxed){
 }
 function renderMenu(){
   $('tabs').innerHTML=TABS.filter(([k])=>k==='worlds'?S.mode!=='endless':k==='multipliers'?S.mode==='endless':true).map(([k,n])=>`<button data-t="${k}" class="${S.tab===k?'on':''}">${n}</button>`).join('');
-  $('tabs').querySelectorAll('button').forEach(b=>b.onclick=()=>{S.tab=b.dataset.t;if(S.tab==='board')loadBoard().then(renderMenu);renderMenu();});
+  $('tabs').querySelectorAll('button').forEach(b=>b.onclick=()=>{S.tab=b.dataset.t;renderMenu();});
   $('pts2').textContent=fmt(S.points);
   let h='';
-  if(S.tab==='board'){
-    h=boardHTML();
-  }else if(S.tab==='worlds'){
+  if(S.tab==='worlds'){
     h=WORLDS.map((w,i)=>{
       const owned=i<S.wu,next=i===S.wu,c=wcost(w);
       const btn=owned?'<span style="color:#8f8">Owned</span>':next?`<button data-world="${i}" ${S.points<c?'disabled':''}>${fmt(c)} pts</button>`:'<span style="color:#667">Locked</span>';
@@ -860,17 +872,6 @@ function startGame(){
   $('start').classList.remove('show');$('over').classList.remove('show');$('home').classList.remove('show');
   closeMenu();
 }
-async function submitScore(){
-  const box=$('overBody');
-  if(!ACC){box.insertAdjacentHTML('beforeend','<p>Log in to post your score to the leaderboard.</p>');return;}
-  const mode=S.mode==='hard'?'hard':S.mode==='endless'?'endless':'normal', score=S.wave*100+S.kills;
-  try{
-    await api('/api/scores',{method:'POST',body:JSON.stringify({name:ACC.name,score,wave:S.wave,mode})});
-    await loadBoard();
-    box.insertAdjacentHTML('beforeend','<h3>'+(mode==='hard'?'Hard':'Top')+' scores</h3>'+
-      boardCache[mode].slice(0,5).map((t,i)=>`<p>${i+1}. ${t.name}: ${t.score}</p>`).join(''));
-  }catch(e){}
-}
 function gameOver(){
   S.over=true;S.hold=false;saveNow();
   const hard=S.mode==='hard', last=S.wu===WORLDS.length;
@@ -882,7 +883,6 @@ function gameOver(){
          <button class="big" id="hCont" style="background:#2d3150">Continue normal run</button>`
       : `<button class="big" id="again">Play Again</button>`);
   $('over').classList.add('show');
-  submitScore();
   if(hard){$('hRb').onclick=hardRebirth;$('hCont').onclick=continueNormal;}
   else $('again').onclick=goHome;
 }
@@ -908,11 +908,11 @@ function continueNormal(){
   banner('NORMAL RUN');saveNow();
 }
 
-// ---- accounts, saves and leaderboard ----
-let ACC=null, boardCache={normal:[],hard:[],endless:[]}, saveTimer=null;
+// ---- accounts and saves ----
+let ACC=null, saveTimer=null;
 const tokenGet=()=>{try{return localStorage.getItem('stoken')||'';}catch(e){return '';}};
 const tokenSet=t=>{try{t?localStorage.setItem('stoken',t):localStorage.removeItem('stoken');}catch(e){}};
-// GitHub Pages has no server, so accounts, saves and leaderboards live in this browser's localStorage.
+// GitHub Pages has no server, so accounts and saves live in this browser's localStorage.
 // api() answers the same routes the old Netlify functions did.
 const DB={
   get(k,d){try{const v=JSON.parse(localStorage.getItem(k));return v==null?d:v;}catch(e){return d;}},
@@ -950,29 +950,6 @@ async function api(path,opt={}){
     sessions[token]={user:key,exp:Date.now()+30*864e5};
     DB.set('st_sessions',sessions);
     return {token,name:rec.name};
-  }
-
-  if(route==='/api/scores'){
-    const KEYS=['normal','hard','endless'];
-    const boards=DB.get('st_scores',{normal:[],hard:[],endless:[]});
-    if(method==='POST'){
-      const mode=KEYS.includes(body.mode)?body.mode:'normal';
-      const name=String(body.name||'Anon').slice(0,16).replace(/[<>]/g,'');
-      const score=Math.max(0,Math.min(1e9,Math.floor(Number(body.score)||0)));
-      const list=boards[mode]||[];
-      const entry={name,score,mode,wave:Number(body.wave)||1,date:Date.now()};
-      const i=list.findIndex(t=>String(t.name).toLowerCase()===name.toLowerCase());
-      // one entry per name: only replace it if the new score is better
-      if(i>=0){if(score>list[i].score)list[i]=entry;}else list.push(entry);
-      list.sort((a,c)=>c.score-a.score);
-      boards[mode]=list.slice(0,50);
-      DB.set('st_scores',boards);
-      return {ok:true};
-    }
-    const mode=KEYS.includes(new URLSearchParams(qs||'').get('mode'))?new URLSearchParams(qs).get('mode'):'normal';
-    const best=new Map();
-    for(const t of boards[mode]||[]){const k=String(t.name).toLowerCase();if(!best.has(k)||t.score>best.get(k).score)best.set(k,t);}
-    return [...best.values()].sort((a,c)=>c.score-a.score).slice(0,10);
   }
 
   // everything below needs a logged-in session
@@ -1091,16 +1068,6 @@ async function logout(){
 async function initAuth(){
   if(tokenGet()){try{await refreshAccount();enterStart();return;}catch(e){tokenSet('');}}
   $('auth').classList.add('show');
-}
-async function loadBoard(){
-  const get=async m=>{try{const a=await api('/api/scores?mode='+m);return a.filter(t=>(t.mode||'normal')===m);}catch(e){return [];}};
-  boardCache={normal:await get('normal'),hard:await get('hard'),endless:await get('endless')};
-}
-function boardHTML(){
-  const list=arr=>arr&&arr.length?arr.map((t,i)=>`<div class="up"><div><b>${i+1}. ${t.name}</b></div><span>${fmt(t.score)}</span></div>`).join(''):'<p>No scores yet.</p>';
-  return '<div class="sec">Normal leaderboard</div>'+list(boardCache.normal)+
-    '<div class="sec">Hard leaderboard</div>'+list(boardCache.hard)+'<div class="sec">Endless leaderboard</div>'+list(boardCache.endless)+
-    '<p>Scores are saved in this browser only.</p>'+(ACC?'':'<p>Log in to post your score.</p>');
 }
 $('bLogin').onclick=()=>authCall('login');
 $('bReg').onclick=()=>authCall('register');
