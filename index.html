@@ -114,7 +114,7 @@ const SHAPES=[
   {n:8,name:'Octagon',w:1},{n:9,name:'Nonagon',w:1},{n:10,name:'Decagon',w:1},{n:12,name:'Dodecagon',w:1},{n:5,star:1,name:'Star',w:1},
   {n:11,name:'Undecagon',w:2},{n:13,name:'Tridecagon',w:3},{n:16,name:'Hexadecagon',w:3},{n:7,star:1,name:'Septagram',w:4},
   {n:8,star:1,name:'Octagram',w:4},{n:12,star:1,name:'Dodecagram',w:5},{n:20,name:'Icosagon',w:5},{n:32,name:'Prism Sun',w:5}
-].map((s,k)=>({...s,k,minW:s.w,hp:2**k,pts:2**k,r:Math.min(40,12+k*2.5),spd:Math.max(18,85-k*7),dmg:Math.min(60,1+k*2)}));
+].map((s,k)=>({...s,k,minW:s.w,hp:2**k,pts:2**k,r:Math.min(40,12+k*2.5),spd:Math.max(30,95-k*4),dmg:Math.min(80,2+k*3)}));
 const WORLDS=[
   {name:'Dawn',mult:1,cost:0},{name:'Ember',mult:2,cost:2000},{name:'Tide',mult:4,cost:40000},
   {name:'Void',mult:7,cost:800000},{name:'Prism',mult:12,cost:16000000}
@@ -189,7 +189,13 @@ function noiseSrc(ac){
   return NB;
 }
 // every sound is a small patch: an oscillator or noise, a filter that sweeps, and a fast envelope
-function play(fn){if(!SET.sound)return;const x=ac();if(!x)return;try{fn(x,x.currentTime);}catch(e){}}
+let voices=0;
+function play(fn){
+  if(!SET.sound||voices>=10)return;
+  const x=ac();if(!x)return;
+  voices++;setTimeout(()=>voices--,450);
+  try{fn(x,x.currentTime);}catch(e){}
+}
 function sweep(x,t,f0,f1,d,type,v,filt=0,delay=0){
   const o=x.createOscillator(),g=x.createGain(),st=t+delay;
   o.type=type;o.frequency.setValueAtTime(f0,st);o.frequency.exponentialRampToValueAtTime(Math.max(25,f1),st+d);
@@ -255,6 +261,18 @@ const SFX={
   })
 };
 
+// minimum gap between repeats of the same sound, so rapid hits don't pile up
+const SFX_GAP={shoot:90,turret:140,hit:70,kill:70,hurt:250,quake:500,pulse:300,buy:150,wave:400};
+const sfxLast={};
+for(const k in SFX){
+  const f=SFX[k];
+  SFX[k]=(...args)=>{
+    const now=performance.now();
+    if(now-(sfxLast[k]||0)<(SFX_GAP[k]||100))return;
+    sfxLast[k]=now;f(...args);
+  };
+}
+
 // ---- state ----
 const stars=Array.from({length:150},()=>({a:Math.random()*TAU,d:Math.random()*900,s:20+Math.random()*60}));
 let S={started:false,menu:false,over:false,tab:'tower',wu:1,lv:{}};
@@ -281,7 +299,7 @@ function spawn(){
   const pool=SHAPES.filter(x=>x.k<=maxI&&x.minW<=S.wu);
   const T=pool[Math.floor(Math.random()*pool.length)];
   const a=Math.random()*TAU,R2=Math.hypot(cw,ch)/2+40;
-  S.shapes.push({t:T,x:cx+Math.cos(a)*R2,y:cy+Math.sin(a)*R2,hp:T.hp*(S.mode==='hard'?4:1),max:T.hp*(S.mode==='hard'?4:1),r:T.r,rot:Math.random()*TAU,fl:0,dead:false,age:0});
+  S.shapes.push({t:T,x:cx+Math.cos(a)*R2,y:cy+Math.sin(a)*R2,hp:T.hp*(S.mode==='hard'?4:1),max:T.hp*(S.mode==='hard'?4:1),r:T.r,rot:Math.random()*TAU,fl:0,dead:false,age:0,arm:Math.min(0.5,0.03*T.k)});
 }
 const onScreen=s=>!s.dead&&s.x>0&&s.x<cw&&s.y>0&&s.y<ch;
 function nearest(x,y,range,pred=s=>!s.dead){
@@ -440,7 +458,7 @@ function update(dt){
     for(const s of S.shapes){
       if(s.dead||q.hit.includes(s))continue;
       if(Math.abs(Math.hypot(s.x-cx,s.y-cy)-q.r)<s.r+12){
-        s.hp-=q.dmg;s.fl=0.1;q.hit.push(s);
+        s.hp-=q.dmg*(1-s.arm);s.fl=0.1;q.hit.push(s);
         if(s.hp<=0)killShape(s);
       }
     }
@@ -454,7 +472,7 @@ function update(dt){
     for(const s of S.shapes){
       if(s.dead||b.hit.includes(s))continue;
       if(Math.hypot(s.x-b.x,s.y-b.y)<s.r+3){
-        s.hp-=b.dmg;s.fl=0.08;b.hit.push(s);
+        s.hp-=b.dmg*(1-s.arm);s.fl=0.08;b.hit.push(s);
         burst(b.x,b.y,'#fff6a0',3);SFX.hit();
         if(s.hp<=0)killShape(s);
         if(b.p>0)b.p--;else{b.dead=true;break;}
@@ -468,7 +486,7 @@ function update(dt){
       if(s.dead)continue;
       const dx=s.x-cx,dy=s.y-cy,along=dx*ux+dy*uy,perp=Math.abs(-dx*uy+dy*ux);
       if(along>0&&perp<s.r+12){
-        s.hp-=dps*dt;s.fl=0.05;
+        s.hp-=dps*dt*(1-s.arm);s.fl=0.05;
         if(Math.random()<0.3)burst(s.x,s.y,'#fff6a0',2);
         if(s.hp<=0)killShape(s);
       }
