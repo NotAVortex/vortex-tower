@@ -86,6 +86,11 @@ body.low *{backdrop-filter:none!important;transition:none!important}
     <button class="big" id="bGuest" style="background:#2d3150">Play as guest (progress will be reset)</button>
   </div>
 </div>
+<div class="overlay" id="home"><div class="panel">
+  <h2>Shape Tower</h2>
+  <p id="homeMsg"></p>
+  <div id="slots"></div>
+</div></div>
 <div class="overlay" id="menu">
   <button class="xb" id="x">✕</button>
   <div class="panel">
@@ -96,6 +101,7 @@ body.low *{backdrop-filter:none!important;transition:none!important}
     <button class="big" id="rb"></button>
     <button class="big" id="hard" style="display:none;background:linear-gradient(135deg,#ff5d7a,#7a1028)">Start Hard Run</button>
     <button class="big" id="close">Resume</button>
+    <button class="big" id="toHome" style="background:#2d3150">Save &amp; back to home</button>
   </div>
 </div>
 
@@ -123,7 +129,7 @@ const WORLDS=[
 ];
 const UPG={
   tower:[
-    {id:'dmg',n:'Sharper Shots',d:'+1 bullet damage',b:10,m:50},
+    {id:'dmg',n:'Sharper Shots',d:'+1 bullet damage',b:10,m:Infinity},
     {id:'rate',n:'Rapid Fire',d:'+12% fire rate',b:15,m:30},
     {id:'multi',n:'Multishot',d:'+1 bullet per volley',b:40,m:8},
     {id:'pierce',n:'Piercing Rounds',d:'Bullets pass through 1 more shape',b:35,m:10},
@@ -131,17 +137,17 @@ const UPG={
     {id:'crit',n:'Critical Aim',d:'+10% chance of double damage',b:30,m:10},
     {id:'hp',n:'Armor Plating',d:'+25 max HP and heal 25',b:20,m:50},
     {id:'regen',n:'Self Repair',d:'+0.5 HP per second',b:25,m:30},
-    {id:'greed',n:'Greed Core',d:'+10% points',b:45,m:30}
+    {id:'greed',n:'Greed Core',d:'+10% points',b:45,m:Infinity}
   ],
   drones:[
-    {id:'bots',n:'Drone Bay',d:'+1 orbiting drone (max 50)',b:50,m:50},
+    {id:'bots',n:'Drone Bay',d:'+1 orbiting drone (max 150)',b:50,m:150},
     {id:'ddmg',n:'Drone Firepower',d:'+1 drone damage',b:25,m:50},
     {id:'drate',n:'Drone Overclock',d:'+15% drone fire rate',b:30,m:30},
     {id:'dspeed',n:'Drone Orbit',d:'+10% orbit speed',b:20,m:30},
     {id:'drange',n:'Drone Radar',d:'+30 targeting range',b:35,m:20}
   ],
   turrets:[
-    {id:'tur',n:'Turret Mount',d:'+1 manual turret (max 8)',b:120,m:8},
+    {id:'tur',n:'Turret Mount',d:'+1 manual turret (max 16)',b:120,m:16},
     {id:'tdmg',n:'Turret Ordnance',d:'+1 turret damage',b:30,m:50},
     {id:'trate',n:'Turret Autoloader',d:'+12% turret fire rate',b:30,m:30},
     {id:'tmulti',n:'Turret Spread',d:'+1 bullet per turret shot',b:60,m:4}
@@ -163,10 +169,15 @@ const UPG={
     {id:'speed2',n:'Time x2',d:'Unlocks x2 game speed (top-left button)',b:20000,m:1},
     {id:'speed4',n:'Time x4',d:'Unlocks x4 game speed (top-left button)',b:150000,m:1},
     {id:'speed8',n:'Time x8',d:'Unlocks x8 game speed (top-left button)',b:1000000,m:1}
+  ],
+  multipliers:[
+    {id:'pmul',n:'Point Multiplier',d:'×1.25 points per level (endless)',b:100,m:Infinity},
+    {id:'dmul',n:'Damage Multiplier',d:'×1.2 damage per level (endless)',b:100,m:Infinity},
+    {id:'smul',n:'Swarm Rate',d:'×1.1 enemy spawn rate per level (endless)',b:150,m:Infinity}
   ]
 };
-const ALLUP=[...UPG.tower,...UPG.drones,...UPG.turrets,...UPG.quake,...UPG.abilities];
-const cost=(b,lv)=>Math.round(b*Math.pow(1.3,lv));
+const ALLUP=[...UPG.tower,...UPG.drones,...UPG.turrets,...UPG.quake,...UPG.abilities,...UPG.multipliers];
+const cost=(b,lv)=>Math.round(b*Math.pow(1.3,lv)*(S.mode==='hard'?3:1));
 const fmt=n=>n>=1e6?(n/1e6).toFixed(1)+'M':n>=1e4?(n/1e3).toFixed(1)+'k':''+Math.floor(n);
 let TH=225;
 
@@ -298,9 +309,9 @@ function newState(){
     ang:-Math.PI/2,flash:0,muzzle:0,shake:0,shieldT:0,warpT:0,cd:{shield:0,warp:0,nova:0,beam:0,overcharge:0,mend:0},beamT:0,beamA:0,ovT:0,coreOff:false,recoil:0,trec:[],tv:[],rings:[],mode:S.mode||'normal',normalSnap:S.normalSnap||null,lv};
 }
 let ptr=null;
-const wcost=w=>Math.round(w.cost*Math.pow(1.5,R.rb||0));
+const wcost=w=>Math.round(w.cost*Math.pow(1.5,R.rb||0)*(S.mode==='hard'?3:1));
 const wmult=w=>w.mult*Math.pow(1.75,R.rb||0);
-const pm=()=>wmult(WORLDS[S.wu-1])*(1+0.1*S.lv.greed)*(1+0.5*R.rb)*(S.mode==='hard'?3*(1+0.75*(R.hrb||0)):1);
+const pm=()=>(S.mode==='endless'?Math.pow(1.25,S.lv.pmul||0):wmult(WORLDS[S.wu-1]))*(1+0.1*S.lv.greed)*(1+0.5*R.rb)*(S.mode==='hard'?(1+0.75*(R.hrb||0)):1);
 
 $('guide').innerHTML=SHAPES.map(s=>`<span>${s.name}</span>`).join('')+'';
 $('guide').innerHTML=SHAPES.map(s=>`<span style="color:${shapeCol(s.k)}">${s.name}</span>`).join('');
@@ -309,8 +320,8 @@ function accent(a=1){return `hsla(${TH}, 90%, 65%, ${a})`;}
 
 // ---- gameplay ----
 function spawn(){
-  const maxI=Math.min(SHAPES.length-1,3*(S.wu-1)+Math.floor((S.wave-1)/2));
-  const pool=SHAPES.filter(x=>x.k<=maxI&&x.minW<=S.wu);
+  const maxI=Math.min(SHAPES.length-1,3*(ew()-1)+Math.floor((S.wave-1)/2));
+  const pool=SHAPES.filter(x=>x.k<=maxI&&x.minW<=ew());
   const T=pool[Math.floor(Math.random()*pool.length)];
   const a=Math.random()*TAU,R2=Math.hypot(cw,ch)/2+40;
   S.shapes.push({t:T,x:cx+Math.cos(a)*R2,y:cy+Math.sin(a)*R2,hp:T.hp*(S.mode==='hard'?4:1),max:T.hp*(S.mode==='hard'?4:1),r:T.r,rot:Math.random()*TAU,fl:0,dead:false,age:0,arm:Math.min(0.5,0.03*T.k)});
@@ -362,6 +373,9 @@ function spawnBoss(){
   S.shapes.push({t:T,x:cx+Math.cos(a)*R2,y:cy+Math.sin(a)*R2,hp,max:hp,r:T.r,rot:0,fl:0,dead:false,age:0,arm:Math.min(0.5,0.2+0.06*n),boss:true});
   banner('BOSS INCOMING');SFX.quake();addShake(6);
 }
+// the world used for enemy scaling: endless mode climbs 1 world every 5 waves
+function ew(){return S.mode==='endless'?Math.min(5,1+Math.floor((S.wave-1)/5)):S.wu;}
+function dmulF(){return S.mode==='endless'?Math.pow(1.2,S.lv.dmul||0):1;}
 function killShape(s){
   s.dead=true;
   if(s.boss){banner('BOSS DEFEATED');addShake(10);}
@@ -384,7 +398,7 @@ function update(dt){
   S.shake=Math.max(0,S.shake-dt*35);
   const L=S.lv,diag=Math.hypot(cw,ch)/2;
   if(L.regen)S.hp=Math.min(S.maxHp,S.hp+L.regen*0.5*dt);
-  for(const st of stars){st.d+=st.s*dt*(1+(S.wu-1)*0.3);if(st.d>diag){st.d=0;st.a=Math.random()*TAU;}}
+  for(const st of stars){st.d+=st.s*dt*(1+(ew()-1)*0.3);if(st.d>diag){st.d=0;st.a=Math.random()*TAU;}}
 
   // ground pulses (ambient)
   S.gpT-=dt;
@@ -394,9 +408,9 @@ function update(dt){
 
   if(S.wave%15===0&&S.bossFor!==S.wave){S.bossFor=S.wave;spawnBoss();}
   S.spawnT-=dt;
-  if(S.spawnT<=0){spawn();S.spawnT=Math.max(0.25,1.8-S.wave*0.04)/(1+0.4*(S.wu-1))*(0.7+Math.random()*0.6);}
+  if(S.spawnT<=0){spawn();S.spawnT=Math.max(0.12,1.8-S.wave*0.04)/(1+0.4*(ew()-1))/Math.pow(1.1,S.lv.smul||0)*(0.7+Math.random()*0.6);}
 
-  const sp=(0.75+(S.wave-1)*0.012)*(1+(S.wu-1)*0.06)*(S.warpT>0?0.35:1);
+  const sp=(0.75+(S.wave-1)*0.012)*(1+(ew()-1)*0.06)*(S.warpT>0?0.35:1);
   for(const s of S.shapes){
     if(s.dead)continue;
     if(s.boss){
@@ -438,7 +452,7 @@ function update(dt){
   }
 
   // drones (up to 50): fire only at shapes on screen
-  const nb=Math.min(50,L.bots),orbit=1.4*(1+0.1*L.dspeed),range=380+30*L.drange;
+  const nb=Math.min(150,L.bots),orbit=1.4*(1+0.1*L.dspeed),range=380+30*L.drange;
   while(S.botT.length<nb)S.botT.push(0);
   for(let i=0;i<nb;i++){
     S.botT[i]-=dt;
@@ -506,7 +520,7 @@ function update(dt){
     for(const s of S.shapes){
       if(s.dead||b.hit.includes(s))continue;
       if(Math.hypot(s.x-b.x,s.y-b.y)<s.r+3){
-        s.hp-=b.dmg*(1-s.arm);s.fl=0.08;b.hit.push(s);
+        s.hp-=b.dmg*(1-s.arm)*dmulF();s.fl=0.08;b.hit.push(s);
         burst(b.x,b.y,'#fff6a0',3);SFX.hit();
         if(s.hp<=0)killShape(s);
         if(b.p>0)b.p--;else{b.dead=true;break;}
@@ -567,7 +581,7 @@ function nebula(){
   }
 }
 function draw(){
-  const W=WORLDS[S.wu-1]||WORLDS[0], wi=S.wu-1;
+  const W=WORLDS[ew()-1]||WORLDS[0], wi=ew()-1;
   const g=ctx.createRadialGradient(cx,cy,0,cx,cy,Math.hypot(cw,ch)/1.5);
   g.addColorStop(0,`hsl(${(TH+wi*12)%360}, 55%, 18%)`);g.addColorStop(1,`hsl(${(TH+wi*12)%360}, 50%, 4%)`);
   ctx.fillStyle=g;ctx.fillRect(0,0,cw,ch);
@@ -650,7 +664,7 @@ function draw(){
   }
 
   // drones
-  const nb=Math.min(50,S.lv.bots),orbit=1.4*(1+0.1*S.lv.dspeed);
+  const nb=Math.min(150,S.lv.bots),orbit=1.4*(1+0.1*S.lv.dspeed);
   for(let i=0;i<nb;i++){
     const [bx,by]=droneXY(i,nb,orbit);
     ctx.shadowColor=accent(0.8);ctx.shadowBlur=SET.low?0:(SET.ultra?1.6:1)*(10);
@@ -743,7 +757,7 @@ function hud(){
   const sig=ABK.map(a=>S.lv[a[3]]||0).join();
   if(sig!==S.absig){S.absig=sig;buildAbil();}
   updAbil();
-  $('wlN').textContent=S.wu+(S.mode==='hard'?' · HARD':'')+(ACC?'':' · guest, not saved');
+  $('wlN').textContent=(S.mode==='endless'?'∞ · Endless':S.wu)+(S.mode==='hard'?' · HARD':'')+(ACC?'':' · guest, not saved');
   $('ptT').textContent=fmt(S.points);
   $('wvT').textContent=S.wave;
   $('hpb').style.width=Math.max(0,S.hp/S.maxHp*100)+'%';
@@ -752,7 +766,7 @@ function hud(){
 }
 
 // ---- menus ----
-const TABS=[['tower','Tower'],['drones','Drones'],['turrets','Turrets'],['quake','Quake'],['abilities','Abilities'],['worlds','Worlds'],['board','Board'],['settings','Settings']];
+const TABS=[['tower','Tower'],['drones','Drones'],['turrets','Turrets'],['quake','Quake'],['abilities','Abilities'],['multipliers','Multipliers'],['worlds','Worlds'],['board','Board'],['settings','Settings']];
 function sumCost(u,n){let t=0,lv=S.lv[u.id];for(let i=0;i<n&&lv+i<u.m;i++)t+=cost(u.b,lv+i);return t;}
 function btnsFor(u,c,maxed){
   if(maxed)return '<button disabled>MAX</button>';
@@ -763,7 +777,7 @@ function btnsFor(u,c,maxed){
     `<button data-buy="${u.id}" data-n="999" ${dis}>MAX ${fmt(sumCost(u,999))}</button>`;
 }
 function renderMenu(){
-  $('tabs').innerHTML=TABS.map(([k,n])=>`<button data-t="${k}" class="${S.tab===k?'on':''}">${n}</button>`).join('');
+  $('tabs').innerHTML=TABS.filter(([k])=>k==='worlds'?S.mode!=='endless':k==='multipliers'?S.mode==='endless':true).map(([k,n])=>`<button data-t="${k}" class="${S.tab===k?'on':''}">${n}</button>`).join('');
   $('tabs').querySelectorAll('button').forEach(b=>b.onclick=()=>{S.tab=b.dataset.t;if(S.tab==='board')loadBoard().then(renderMenu);renderMenu();});
   $('pts2').textContent=fmt(S.points);
   let h='';
@@ -786,7 +800,7 @@ function renderMenu(){
   }else{
     h=UPG[S.tab].map(u=>{
       const lv=S.lv[u.id],maxed=lv>=u.m,c=cost(u.b,lv);
-      return `<div class="up"><div><b>${u.n}</b> <span style="color:#9ba3c8">Lv ${lv}/${u.m}</span><small>${u.d}</small></div>`+
+      return `<div class="up"><div><b>${u.n}</b> <span style="color:#9ba3c8">Lv ${lv}${u.m===Infinity?'':'/'+u.m}</span><small>${u.d}</small></div>`+
         `<div class="bts">${btnsFor(u,c,maxed)}</div></div>`;
     }).join('');
   }
@@ -843,13 +857,13 @@ function rebirth(){
 function startGame(){
   const a=ac();if(a&&a.state==='suspended')a.resume();
   S=newState();applySave();
-  $('start').classList.remove('show');$('over').classList.remove('show');
+  $('start').classList.remove('show');$('over').classList.remove('show');$('home').classList.remove('show');
   closeMenu();
 }
 async function submitScore(){
   const box=$('overBody');
   if(!ACC){box.insertAdjacentHTML('beforeend','<p>Log in to post your score to the leaderboard.</p>');return;}
-  const mode=S.mode==='hard'?'hard':'normal', score=S.wave*100+S.kills;
+  const mode=S.mode==='hard'?'hard':S.mode==='endless'?'endless':'normal', score=S.wave*100+S.kills;
   try{
     await api('/api/scores',{method:'POST',body:JSON.stringify({name:ACC.name,score,wave:S.wave,mode})});
     await loadBoard();
@@ -870,7 +884,7 @@ function gameOver(){
   $('over').classList.add('show');
   submitScore();
   if(hard){$('hRb').onclick=hardRebirth;$('hCont').onclick=continueNormal;}
-  else $('again').onclick=startGame;
+  else $('again').onclick=goHome;
 }
 function startHard(){
   if(S.wu!==WORLDS.length||S.mode==='hard')return;
@@ -895,7 +909,7 @@ function continueNormal(){
 }
 
 // ---- accounts, saves and leaderboard ----
-let ACC=null, boardCache={normal:[],hard:[]}, saveTimer=null;
+let ACC=null, boardCache={normal:[],hard:[],endless:[]}, saveTimer=null;
 const tokenGet=()=>{try{return localStorage.getItem('stoken')||'';}catch(e){return '';}};
 const tokenSet=t=>{try{t?localStorage.setItem('stoken',t):localStorage.removeItem('stoken');}catch(e){}};
 async function api(path,opt={}){
@@ -914,7 +928,13 @@ function loadRun(r){
 }
 function snapshot(){return {mode:S.mode,run:runSnap(),normal:S.normalSnap||null,rb:R.rb,hrb:R.hrb||0};}
 function saveSoon(){if(!ACC||!S.started)return;clearTimeout(saveTimer);saveTimer=setTimeout(saveNow,1200);}
-function saveNow(){if(!ACC||!S.started)return;api('/api/auth/save',{method:'POST',body:JSON.stringify({save:snapshot()})}).catch(()=>{});}
+let ACTIVE=-1;
+function saveNow(){
+  if(!ACC||!S.started||ACTIVE<0)return;
+  const snap=snapshot();
+  ACC.slots[ACTIVE]=snap;
+  api('/api/auth/save',{method:'POST',body:JSON.stringify({slot:ACTIVE,save:snap})}).catch(()=>{});
+}
 function applySave(){
   if(!ACC||!ACC.save)return;
   const d=ACC.save;
@@ -923,8 +943,61 @@ function applySave(){
   S.mode=d.mode==='hard'?'hard':'normal';
   S.normalSnap=d.normal||null;
 }
-async function refreshAccount(){const j=await api('/api/auth/me');ACC={name:j.name,save:j.save};}
-function enterStart(){$('auth').classList.remove('show');if(!S.started)$('start').classList.add('show');}
+async function refreshAccount(){const j=await api('/api/auth/me');ACC={name:j.name,slots:j.slots||[null,null,null]};}
+function enterStart(){$('auth').classList.remove('show');$('start').classList.remove('show');renderHome();$('home').classList.add('show');}
+function renderHome(){
+  const box=$('slots');
+  if(!ACC){
+    $('homeMsg').textContent='Guest progress is not saved and resets when you leave.';
+    box.innerHTML='<button class="big" id="gPlay">Play as guest</button>';
+    $('gPlay').onclick=()=>{ACTIVE=-1;startGame();};
+    return;
+  }
+  $('homeMsg').textContent='Choose a save slot. Each slot keeps its own mode and progress.';
+  box.innerHTML=[0,1,2].map(i=>{
+    const d=ACC.slots[i];
+    if(!d)return `<div class="up"><div><b>Slot ${i+1}</b><small>Empty</small></div><div class="bts"><button data-new="${i}" data-m="normal">Normal</button><button data-new="${i}" data-m="hard">Hard</button><button data-new="${i}" data-m="endless">Endless</button></div></div>`;
+    const r=d.run||{};
+    return `<div class="up"><div><b>Slot ${i+1} · ${d.mode==='hard'?'Hard':d.mode==='endless'?'Endless':'Normal'}</b><small>World ${r.wu||1} · Wave ${r.wave||1} · Kills ${r.kills||0} · Rebirths ${d.rb||0}</small></div><div class="bts"><button data-load="${i}">Play</button><button data-del="${i}">Delete</button></div></div>`;
+  }).join('');
+  box.querySelectorAll('[data-new]').forEach(b=>b.onclick=()=>createSlot(+b.dataset.new,b.dataset.m));
+  box.querySelectorAll('[data-load]').forEach(b=>b.onclick=()=>loadSlot(+b.dataset.load));
+  box.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>deleteSlot(+b.dataset.del));
+}
+function createSlot(i,mode){
+  R.rb=0;R.hrb=0;
+  S=newState();S.mode=mode;S.normalSnap=null;S.started=true;
+  ACTIVE=i;
+  $('home').classList.remove('show');
+  saveNow();
+}
+function loadSlot(i){
+  const d=ACC.slots[i];if(!d)return;
+  R.rb=d.rb|0;R.hrb=d.hrb|0;
+  S=newState();
+  loadRun(d.run||{});
+  S.mode=['hard','endless'].includes(d.mode)?d.mode:'normal';
+  S.normalSnap=d.normal||null;
+  ACTIVE=i;
+  $('home').classList.remove('show');
+  const a=ac();if(a&&a.state==='suspended')a.resume();
+}
+async function deleteSlot(i){
+  if(!confirm('Delete this save slot?'))return;
+  try{
+    await api('/api/auth/save',{method:'POST',body:JSON.stringify({slot:i,save:null})});
+    ACC.slots[i]=null;
+    if(ACTIVE===i)ACTIVE=-1;
+    renderHome();
+  }catch(e){}
+}
+function goHome(){
+  saveNow();
+  S.started=false;S.over=false;closeMenu();
+  $('over').classList.remove('show');
+  enterStart();
+}
+$('toHome').onclick=goHome;
 async function authCall(kind){
   const user=$('u').value.trim(),pass=$('p').value;
   $('authMsg').textContent='Working…';
@@ -946,12 +1019,12 @@ async function initAuth(){
 }
 async function loadBoard(){
   const get=async m=>{try{const a=await (await fetch('/api/scores?mode='+m)).json();return a.filter(t=>(t.mode||'normal')===m);}catch(e){return [];}};
-  boardCache={normal:await get('normal'),hard:await get('hard')};
+  boardCache={normal:await get('normal'),hard:await get('hard'),endless:await get('endless')};
 }
 function boardHTML(){
   const list=arr=>arr&&arr.length?arr.map((t,i)=>`<div class="up"><div><b>${i+1}. ${t.name}</b></div><span>${fmt(t.score)}</span></div>`).join(''):'<p>No scores yet.</p>';
   return '<div class="sec">Normal leaderboard</div>'+list(boardCache.normal)+
-    '<div class="sec">Hard leaderboard</div>'+list(boardCache.hard)+
+    '<div class="sec">Hard leaderboard</div>'+list(boardCache.hard)+'<div class="sec">Endless leaderboard</div>'+list(boardCache.endless)+
     (ACC?'':'<p>Log in to post your score.</p>');
 }
 $('bLogin').onclick=()=>authCall('login');
@@ -985,7 +1058,7 @@ addEventListener('keydown',e=>{
   if(e.key==='t'||e.key==='T')useAbility('beam');
   if(e.key==='f'||e.key==='F')useAbility('overcharge');
   if(e.key==='g'||e.key==='G')useAbility('mend');
-  if(e.key>='1'&&e.key<='8'){const i=+e.key-1;S.sel=i<S.lv.tur?i:-1;}
+  if(e.key>='1'&&e.key<='9'){const i=+e.key-1;S.sel=i<S.lv.tur?i:-1;}
   if(e.key===' '){e.preventDefault();S.hold=true;}
 });
 addEventListener('keyup',e=>{if(e.key===' ')S.hold=false;});
