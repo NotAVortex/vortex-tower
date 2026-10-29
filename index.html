@@ -681,6 +681,17 @@ function startGame(){
   $('start').classList.remove('show');$('over').classList.remove('show');
   closeMenu();
 }
+async function submitScore(){
+  const name=(prompt('Name for the leaderboard:')||'Anon').slice(0,16);
+  const score=S.wave*100+S.kills;
+  try{
+    await fetch('/api/scores',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({name,score,wave:S.wave})});
+    const top=await (await fetch('/api/scores')).json();
+    $('overBody').insertAdjacentHTML('beforeend','<h3>Top scores</h3>'+
+      top.map((t,i)=>`<p>${i+1}. ${t.name}: ${t.score}</p>`).join(''));
+  }catch(e){}
+}
 function gameOver(){
   S.over=true;S.hold=false;
   $('overBody').innerHTML=`<h2>Game Over</h2><p>World: <b>${S.wu} · ${WORLDS[S.wu-1].name}</b></p>
@@ -688,6 +699,7 @@ function gameOver(){
     <button class="big" id="again">Play Again</button>`;
   $('over').classList.add('show');
   $('again').onclick=startGame;
+  submitScore();
 }
 
 $('go').onclick=startGame;
